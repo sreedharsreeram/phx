@@ -11,12 +11,15 @@ const PROVIDER = process.env.REDRAW_PROVIDER || "mock", WIN = 1024, PAD = 96, on
 const nx = geo.W / CHUNK, ny = geo.H / CHUNK;
 mkdirSync("out/redrawn", { recursive: true }); mkdirSync("out/redraw-cache", { recursive: true });
 
+const REF = process.env.REF ? Buffer.from(await Bun.file(process.env.REF).arrayBuffer()) : null;   // a finished window every call should match
 const STYLE = `Redraw this top-down 45-degree isometric city map render as a warm, hand-illustrated map in the style of a detailed
 isometric city poster: soft gouache textures, subtle paper grain, gentle ink outlines, pastel desert palette (cream ground,
 sage greens, dusty terracotta and sand buildings, slate-blue glass towers, pale blue water). Keep EVERY street, building
 footprint, building height, tree, parking lot and shadow exactly where it is and the same size; do not add, remove or move
 anything; do not add text, labels, people or vehicles. This is Tempe / Phoenix, Arizona: desert light, palo verde and palm
-trees, flat roofs with rooftop units. Output a single image of the same framing.`;
+trees, flat roofs with rooftop units. Output a single image of the same framing.` + (REF ? `
+The second image is a finished window of the same map: match its palette, line weight, paper tone, tree style and
+shading EXACTLY so the two tile together seamlessly.` : "");
 
 // one window of the full map, read across chunk boundaries
 async function window_(px: number, py: number, w: number, h: number) {
@@ -34,11 +37,17 @@ const providers: Record<string, (png: Buffer, size: number) => Promise<Buffer>> 
   // local stand-in so the plumbing (windows, feathering, tiling) can run without any key
   async mock(png) { return sharp(png).modulate({ saturation: 0.92 }).blur(0.6).sharpen({ sigma: 1.2 }).linear(1.04, -6).png().toBuffer(); },
   async openai(png, size) {
-    const fd = new FormData(); fd.append("model", process.env.OPENAI_IMAGE_MODEL || "gpt-image-1"); fd.append("prompt", STYLE); fd.append("size", `${size}x${size}`); fd.append("quality", process.env.OPENAI_IMAGE_QUALITY || "high");
-    fd.append("image", new Blob([png], { type: "image/png" }), "window.png");
-    const r = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd });
-    if (!r.ok) throw new Error(`openai ${r.status}: ${(await r.text()).slice(0, 300)}`);
-    const j = await r.json(); return Buffer.from(j.data[0].b64_json, "base64");
+    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+    for (const sz of [size, 1024]) {   // newer models take larger squares; fall back to 1024 if this one does not
+      const fd = new FormData(); fd.append("model", model); fd.append("prompt", STYLE); fd.append("size", `${sz}x${sz}`); fd.append("quality", process.env.OPENAI_IMAGE_QUALITY || "high"); if (/gpt-image-1(\.|$)/.test(model)) fd.append("input_fidelity", "high");
+      fd.append("image[]", new Blob([png], { type: "image/png" }), "window.png");
+      if (REF) fd.append("image[]", new Blob([REF], { type: "image/png" }), "reference.png");
+      const r = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd });
+      if (r.ok) { const j = await r.json(); console.log(`  ${model} ${sz}px ok`); return Buffer.from(j.data[0].b64_json, "base64"); }
+      const msg = (await r.text()).slice(0, 300); console.log(`  ${model} ${sz}px: ${r.status} ${msg}`);
+      if (!(r.status === 400 && /size|input_fidelity/i.test(msg)) || sz === 1024) throw new Error(`openai ${r.status}: ${msg}`);
+    }
+    throw new Error("openai: no size accepted");
   },
   async gemini(png) {
     // newest first; a model the key cannot use (free tier, quota) falls through to the next
@@ -80,14 +89,14 @@ const acc = new Map<string, sharp.OverlayOptions[]>();
 let n = 0, t0 = Date.now();
 for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++) {
   const cx = Math.floor((wx * WIN) / CHUNK), cy = Math.floor((wy * WIN) / CHUNK); if (only && only !== `${cx},${cy}`) continue;
-  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `out/redraw-cache/${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}_${wx}_${wy}.png`;
+  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `out/redraw-cache/${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") : ""}_${wx}_${wy}.png`;
   let out: Buffer;
   if (existsSync(cache)) out = Buffer.from(await Bun.file(cache).arrayBuffer());
   else {
     const src = await window_(px, py, size, size);
     // skip windows that are plain ground: nothing to redraw, and it keeps the bill down
     const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) continue;
-    const sendSize = PROVIDER === "openai" || PROVIDER === "bedrock" ? 1024 : size;   // fixed/1 MP input sizes; scale there and back
+    const sendSize = PROVIDER === "openai" ? Number(process.env.OPENAI_IMAGE_SIZE || 1024) : PROVIDER === "bedrock" ? 1024 : size;   // fixed/1 MP input sizes; scale there and back
     const sent = sendSize === size ? src : await sharp(src).resize(sendSize, sendSize).png().toBuffer();
     const got = await redraw(sent, sendSize);
     out = await sharp(got).resize(size, size, { fit: "fill" }).png().toBuffer();
@@ -101,6 +110,7 @@ for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++
 }
 for (const [k, parts] of acc) {
   const base = `out/chunks/${k}.png`; if (!existsSync(base)) continue;
+  if (only && k !== only.replace(",", "_")) continue;
   // sharp cannot composite outside the canvas: crop each overlay to the chunk first
   const clipped: sharp.OverlayOptions[] = [];
   for (const p of parts) {

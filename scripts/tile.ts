@@ -8,7 +8,9 @@ import { CHUNK, TILE, DEPTH_CELL_PX } from "../config";
 sharp.cache(false); sharp.concurrency(4);
 // SOURCE=redrawn uses out/redrawn/ (image-model pass) where a chunk exists there, else the plain render
 const SOURCE = process.env.SOURCE || "chunks";
-const chunkPath = (cx: number, cy: number) => { const r = `out/${SOURCE}/${cx}_${cy}.png`; return SOURCE !== "chunks" && existsSync(r) ? r : `out/chunks/${cx}_${cy}.png`; };
+// REDRAWN_ONLY=13_3,1_1 limits which redrawn chunks are used (the rest stay plain)
+const ONLY = process.env.REDRAWN_ONLY ? new Set(process.env.REDRAWN_ONLY.split(",")) : null;
+const chunkPath = (cx: number, cy: number) => { const r = `out/${SOURCE}/${cx}_${cy}.png`; return SOURCE !== "chunks" && existsSync(r) && (!ONLY || ONLY.has(`${cx}_${cy}`)) ? r : `out/chunks/${cx}_${cy}.png`; };
 // paper grain: a tiled noise texture multiplied in very lightly, so flat colour reads as print rather than vector
 const grain = await sharp({ create: { width: 512, height: 512, channels: 3, noise: { type: "gaussian", mean: 236, sigma: 9 } } }).png().toBuffer();
 const paper = async (src: string) => sharp(src).composite([{ input: grain, tile: true, blend: "multiply" }]).png().toBuffer();
@@ -21,7 +23,7 @@ const dir = (L: number) => { const d = `public/tiles/${VERSION}/${L}`; mkdirSync
 const webp = { quality: 82, effort: 4 };
 
 // full-resolution level: cut each chunk into PER x PER tiles
-{
+if (!process.env.DEPTH_ONLY) {
   const d = dir(maxLevel); let n = 0; const jobs: Promise<unknown>[] = [];
   for (let cy = 0; cy < ny; cy++) for (let cx = 0; cx < nx; cx++) {
     const src = chunkPath(cx, cy); if (!existsSync(src)) { console.log("missing", src); continue; }
@@ -35,7 +37,7 @@ const webp = { quality: 82, effort: 4 };
   await Promise.all(jobs); console.log(`level ${maxLevel}: ${n} tiles`);
 }
 // every coarser level: each tile is the 2x2 block below it, halved
-for (let L = maxLevel - 1; L >= 0; L--) {
+for (let L = maxLevel - 1; L >= 0 && !process.env.DEPTH_ONLY; L--) {
   const { w, h } = sizeAt(L), below = sizeAt(L + 1), d = dir(L), bd = `public/tiles/${VERSION}/${L + 1}`;
   const cols = Math.ceil(w / TILE), rows = Math.ceil(h / TILE); let n = 0; const jobs: Promise<unknown>[] = [];
   for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
@@ -54,7 +56,7 @@ for (let L = maxLevel - 1; L >= 0; L--) {
   }
   await Promise.all(jobs); console.log(`level ${L}: ${cols}x${rows} = ${n} tiles (${w}x${h})`);
 }
-await Bun.write("public/map.json", JSON.stringify({ W, H, tileSize: TILE, format: "webp", maxLevel, tiles: `/tiles/${VERSION}/`, v: VERSION }));
+if (!process.env.DEPTH_ONLY) await Bun.write("public/map.json", JSON.stringify({ W, H, tileSize: TILE, format: "webp", maxLevel, tiles: `/tiles/${VERSION}/`, v: VERSION }));
 
 // depth grid: chunk blocks (Float32, CHUNK/cell square) -> one Uint16 grid, metres from `lo` over `span`, row-delta coded, gzipped
 {
