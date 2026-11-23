@@ -71,5 +71,12 @@
   "lamp": "#3a3632"
  },
  "map": "tempe",
- "title": "Downtown Tempe"
+ "title": "Downtown Tempe",
+ "workArea": {
+  "south": 33.4232,
+  "west": -111.9447,
+  "north": 33.4284,
+  "east": -111.939,
+  "label": "Mill Ave: 3rd St to 6th St"
+ }
 }

@@ -98,13 +98,14 @@
     else Transit.select(h);
   } });
   // ?box=south,west,north,east draws a work-area outline (used while deciding what to illustrate)
-  const box = (new URLSearchParams(location.search).get("box") || "").split(",").map(Number);
-  if (box.length === 4 && box.every(Number.isFinite)) Layers.add({ name: "box", draw: (ctx, view) => {
+  const boxParam = (new URLSearchParams(location.search).get("box") || "").split(",").map(Number);
+  const wa = geo.workArea, box = boxParam.length === 4 && boxParam.every(Number.isFinite) ? boxParam : wa ? [wa.south, wa.west, wa.north, wa.east] : null;
+  if (box) Layers.add({ name: "box", draw: (ctx, view) => {
     const [s, w, n, e] = box, c = [[n, w], [n, e], [s, e], [s, w]].map(([la, lo]) => view.toScreen(...Object.values(G.toPixel(la, lo)).slice(0, 2)));
     ctx.save(); ctx.beginPath(); c.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath();
     ctx.fillStyle = "rgba(0,0,0,0)"; ctx.lineWidth = 4; ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.stroke(); ctx.lineWidth = 2; ctx.setLineDash([10, 6]); ctx.strokeStyle = "#c0392b"; ctx.stroke();
     ctx.setLineDash([]); ctx.globalCompositeOperation = "destination-over"; ctx.restore();
-    ctx.save(); ctx.font = "600 14px Inter, sans-serif"; ctx.fillStyle = "#c0392b"; ctx.strokeStyle = "rgba(255,253,248,.95)"; ctx.lineWidth = 4; const lbl = `work area  ${s},${w} → ${n},${e}`; ctx.strokeText(lbl, c[3][0] + 8, c[3][1] - 10); ctx.fillText(lbl, c[3][0] + 8, c[3][1] - 10); ctx.restore();
+    ctx.save(); ctx.font = "600 14px Inter, sans-serif"; ctx.fillStyle = "#c0392b"; ctx.strokeStyle = "rgba(255,253,248,.95)"; ctx.lineWidth = 4; const lbl = `work area · ${wa?.label ?? ""}  ${s},${w} → ${n},${e}`; ctx.strokeText(lbl, c[3][0] + 8, c[3][1] - 10); ctx.fillText(lbl, c[3][0] + 8, c[3][1] - 10); ctx.restore();
   } });
   Transit.start({ viewer, G, base, status: document.getElementById("status"), card, onFollow: (on) => { Planes.unfollow(); setFollow(on); },
     toggles: { rail: document.getElementById("t-rail"), bus: document.getElementById("t-bus"), stops: document.getElementById("t-stops") } });

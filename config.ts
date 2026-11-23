@@ -1,9 +1,10 @@
 // Maps: pick one with MAP=<name> (default "tempe"). Each has its own footprint, resolution and output folders.
 export const MAPS = {
   // downtown Tempe + ASU: Hardy Dr to Rural Rd, Apache Blvd to the north shore of Tempe Town Lake
-  tempe: { bbox: { south: 33.4135, west: -111.9505, north: 33.4345, east: -111.9245 }, mpp: 0.15, title: "Downtown Tempe" },
+  tempe: { bbox: { south: 33.4135, west: -111.9505, north: 33.4345, east: -111.9245 }, mpp: 0.15, title: "Downtown Tempe",
+    workArea: { south: 33.4232, west: -111.9447, north: 33.4284, east: -111.939, label: "Mill Ave: 3rd St to 6th St" } },
   // the wide corridor: ASU, the rail line past Sky Harbor, downtown Phoenix
-  phx: { bbox: { south: 33.405, west: -112.09, north: 33.465, east: -111.9 }, mpp: 0.5, title: "ASU to downtown Phoenix" },
+  phx: { bbox: { south: 33.405, west: -112.09, north: 33.465, east: -111.9 }, mpp: 0.5, title: "ASU to downtown Phoenix", workArea: null },
 } as const;
 export type MapName = keyof typeof MAPS;
 export const MAP = (process.env.MAP || "tempe") as MapName;

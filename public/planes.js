@@ -37,6 +37,7 @@ window.Planes = (() => {
     const list = [...planes.values()].map((p) => ({ p, s: place(p, view.now) })).sort((a, b) => a.s.alt - b.s.alt);
     for (const { p, s } of list) {
       const air = G.enToPixel(s.e, s.n, s.alt), gnd = G.enToPixel(s.e, s.n, 0);
+      if (gnd.x < 0 || gnd.y < 0 || gnd.x > ui.W || gnd.y > ui.H) continue;   // off the picture
       const [sx, sy] = view.toScreen(air.x, air.y); if (sx < -80 || sy < -80 || sx > view.W + 80 || sy > view.H + 80) continue;
       const heli = p.cat === "A7", L = Math.max(10, span(p) * view.pxPerM);
       const h = G.heading(p.track ?? 0), ang = Math.atan2(h[1], h[0]);
@@ -59,6 +60,6 @@ window.Planes = (() => {
       <div class="sub" style="margin-top:4px">${p.ground || alt < 15 ? "On the ground at Sky Harbor" : `${alt.toLocaleString()} m above the field · ${kts} kt${p.vr > 300 ? " · climbing" : p.vr < -300 ? " · descending" : ""}`}${p.reg && p.flight ? ` · ${p.reg}` : ""}</div>
       <div style="margin-top:8px"><button class="btn" data-follow>${follow === p.id ? "Stop following" : "Follow"}</button></div>`;
   }
-  return { start(opts) { ({ G } = opts); ui = opts; poll(); Layers.add({ name: "planes", enabled: () => ui.toggle.checked, draw }); },
+  return { start(opts) { ({ G } = opts); ui = opts; fetch(opts.base + "geo.json").then((r) => r.json()).then((g) => { ui.W = g.W; ui.H = g.H; }); poll(); Layers.add({ name: "planes", enabled: () => ui.toggle.checked, draw }); },
     card, follow: (id) => { follow = follow === id ? null : id; return follow; }, unfollow: () => (follow = null), deselect: () => (selected = null), isFollowing: () => !!follow };
 })();

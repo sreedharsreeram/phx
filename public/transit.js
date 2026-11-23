@@ -74,6 +74,7 @@ window.Transit = (() => {
     }
     const list = [...vehicles.values()].filter((v) => (v.rail ? showRail : showBus)).map((v) => ({ v, s: place(v, view.now) })).sort((a, b) => a.s.y - b.s.y);
     for (const { v, s } of list) {
+      if (s.x < 0 || s.y < 0 || s.x > geo.W || s.y > geo.H) continue;   // off the picture
       const [sx, sy] = toScreen(s.x, s.y); if (sx < -40 || sy < -40 || sx > W + 40 || sy > H + 40) continue;
       const hid = G.hidden({ x: s.x, y: s.y, depth: s.depth }), col = colorOf(v.route), hl = selected === v.id || follow === v.id;
       ctx.save(); ctx.translate(sx, sy); ctx.globalAlpha = hid ? 0.35 : 1;

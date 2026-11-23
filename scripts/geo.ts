@@ -22,5 +22,5 @@ const geo = {
     tree: "#7a9e62", trunk: "#8a6a4d", pole: "#4d4842", lamp: "#3a3632",
   },
 };
-await Bun.write(`${DIRS.data}/geo.json`, JSON.stringify({ ...geo, map: MAP, title: MAPS[MAP].title }, null, 1));
+await Bun.write(`${DIRS.data}/geo.json`, JSON.stringify({ ...geo, map: MAP, title: MAPS[MAP].title, workArea: (MAPS[MAP] as any).workArea ?? null }, null, 1));
 console.log(`map ${W}x${H} px (${(W * H / 1e6).toFixed(0)} Mpx), chunks ${W / CHUNK}x${H / CHUNK}, depth grid ${geo.depthGrid.w}x${geo.depthGrid.h}`);
