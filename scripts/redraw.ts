@@ -58,7 +58,7 @@ const providers: Record<string, (png: Buffer, size: number, facts?: string) => P
       fd.append("image[]", new Blob([png], { type: "image/png" }), "window.png");
       if (REF) fd.append("image[]", new Blob([REF], { type: "image/png" }), "reference.png");
       const r = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd });
-      if (r.ok) { const j = await r.json(); console.log(`  ${model} ${sz}px ok`); return Buffer.from(j.data[0].b64_json, "base64"); }
+      if (r.ok) { const j = await r.json(), u = j.usage; if (u) { spend.in += u.input_tokens ?? 0; spend.out += u.output_tokens ?? 0; } console.log(`  ${model} ${sz}px ok${u ? ` (${u.input_tokens} in / ${u.output_tokens} out tokens)` : ""}`); return Buffer.from(j.data[0].b64_json, "base64"); }
       const msg = (await r.text()).slice(0, 300); console.log(`  ${model} ${sz}px: ${r.status} ${msg}`);
       if (!(r.status === 400 && /size|input_fidelity/i.test(msg)) || sz === 1024) throw new Error(`openai ${r.status}: ${msg}`);
     }
@@ -117,6 +117,7 @@ for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++
   const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `${DIRS.out}/redraw-cache/${process.env.PASS ? process.env.PASS + "-" : ""}${WIN !== 1024 ? "w" + WIN + "-" : ""}${PAD !== 96 ? "p" + PAD + "-" : ""}${UP > 1 ? "x" + UP + "-" : ""}${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") + "-" + QUALITY : ""}_${wx}_${wy}.png`;
   jobs.push({ wx, wy, px, py, size, cache });
 }
+const spend = { in: 0, out: 0 };
 const FRAME = 6;   // px of neutral border the model is asked to keep; anchors the framing
 async function edgeMap(png: Buffer, w: number, crop: number) {
   // edges of the inner region only (the frame and the window border would otherwise dominate the match)
@@ -162,7 +163,6 @@ async function registered(src: Buffer, out: Buffer, size: number, tag: string) {
 async function runJob(j: Job): Promise<Buffer | null> {
   if (existsSync(j.cache)) return Buffer.from(await Bun.file(j.cache).arrayBuffer());
   const src = await window_(j.px, j.py, j.size, j.size);
-  const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) return null;   // plain ground: skip
   const outSize = j.size * UP;
   const framed = await sharp(src).extract({ left: FRAME, top: FRAME, width: j.size - 2 * FRAME, height: j.size - 2 * FRAME }).extend({ top: FRAME, bottom: FRAME, left: FRAME, right: FRAME, background: "#2b2420" }).png().toBuffer();
   const sent = PROVIDER === "bedrock" ? await sharp(framed).resize(1024, 1024).png().toBuffer() : framed;
@@ -222,4 +222,5 @@ for (const [k, parts] of acc) {
   const bg = UP > 1 ? await sharp(base).resize(OUTCHUNK, OUTCHUNK, { kernel: "lanczos3" }).png().toBuffer() : base;
   await sharp(bg).composite(clipped).png().toFile(`${DIRS.out}/redrawn/${k}.png`);
 }
+if (spend.in || spend.out) console.log(`openai usage: ${spend.in} input + ${spend.out} output tokens, about $${((spend.in * 10 + spend.out * 40) / 1e6).toFixed(2)}`);   // gpt-image-2: $10/M image-in, $40/M image-out
 console.log(`redrew ${n} new windows with ${PROVIDER}; ${acc.size} chunks written to ${DIRS.out}/redrawn/`);
