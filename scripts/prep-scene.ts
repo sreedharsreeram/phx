@@ -49,7 +49,7 @@ for (const f of src.features) {
   }
   if (t.building && t.building !== "no") {
     const h = buildingHeight(t), min = metres(t.min_height) ?? (t["building:min_level"] ? parseFloat(t["building:min_level"]) * 3.4 : 0);
-    for (const p of polys(g)) if (p.outer.length >= 4) scene.buildings.push({ o: p.outer, i: p.holes.length ? p.holes : undefined, h, m: min || undefined, k: t.building, n: t.name, u: asu(t) || undefined, r: t["roof:shape"], c: t["building:colour"] });
+    for (const p of polys(g)) if (p.outer.length >= 4) scene.buildings.push({ o: p.outer, i: p.holes.length ? p.holes : undefined, h, m: min || undefined, k: t.building, n: t.name, a: t["addr:housenumber"] && t["addr:street"] ? `${t["addr:housenumber"]} ${t["addr:street"]}` : undefined, u: asu(t) || undefined, r: t["roof:shape"], c: t["building:colour"] });
     continue;
   }
   if (t.highway) {
@@ -109,8 +109,14 @@ if (await Bun.file(ovPath).exists()) {
 await Bun.write(`${DIRS.data}/scene.json`, JSON.stringify(scene));
 console.log(Object.fromEntries(Object.entries(scene).map(([k, v]) => [k, v.length])), `${(JSON.stringify(scene).length / 1e6).toFixed(1)} MB`);
 
-// building footprints for the hover layer: outline in local metres, height, name, kind
-await Bun.write(`${DIRS.pub}/buildings.json`, JSON.stringify(scene.buildings.filter((b) => b.o.length >= 4).map((b) => ({ o: b.o.map(([e, n]) => [+e.toFixed(1), +n.toFixed(1)]), h: +b.h.toFixed(1), m: b.m, n: b.n, k: b.k }))));
+// building footprints for the hover layer: outline in local metres, height, name, kind, and a label every building has:
+// name, else street address, else kind + nearest named street
+const KIND: Record<string, string> = { apartments: "Apartments", residential: "Residence", house: "House", detached: "House", retail: "Shops", commercial: "Commercial building", office: "Office building", university: "ASU building", college: "ASU building", dormitory: "Dorm", hotel: "Hotel", parking: "Parking structure", garage: "Garage", garages: "Garages", carport: "Carport", roof: "Canopy", terrace: "Townhomes", school: "School", church: "Church", industrial: "Industrial building", warehouse: "Warehouse", shed: "Shed", service: "Utility building", public: "Public building", civic: "Civic building", kiosk: "Kiosk", transportation: "Transit building", train_station: "Station" };
+const segDist = (c: [number, number], a: [number, number], b: [number, number]) => { const dx = b[0] - a[0], dy = b[1] - a[1], t = Math.max(0, Math.min(1, ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(c[0] - a[0] - t * dx, c[1] - a[1] - t * dy); };
+const namedRoads = scene.roads.filter((r) => r.n && !r.foot);
+const nearestStreet = (c: [number, number]) => { let best = 80, name: string | undefined; for (const r of namedRoads) for (let i = 0; i < r.p.length - 1; i++) { const d = segDist(c, r.p[i], r.p[i + 1]); if (d < best) { best = d; name = r.n; } } return name; };
+const label = (b: any) => { if (b.n) return b.n; if (b.a) return b.a; const k = KIND[b.k] ?? (b.u ? "ASU building" : "Building"); const c: [number, number] = [b.o.reduce((s: number, q: number[]) => s + q[0], 0) / b.o.length, b.o.reduce((s: number, q: number[]) => s + q[1], 0) / b.o.length]; const st = nearestStreet(c); return st ? `${k} \u00b7 ${st}` : k; };
+await Bun.write(`${DIRS.pub}/buildings.json`, JSON.stringify(scene.buildings.filter((b) => b.o.length >= 4).map((b) => ({ o: b.o.map(([e, n]) => [+e.toFixed(1), +n.toFixed(1)]), h: +b.h.toFixed(1), m: b.m, n: b.n, l: label(b), k: b.k }))));
 
 // drivable graph for the traffic simulation, with the same widths/lanes the renderer draws
 {

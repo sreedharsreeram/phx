@@ -1,4 +1,4 @@
-// Hover a building to see its name. Footprints are projected at ground and roof level; the hit test covers both and the walls between.
+// Hover a building to see its label (name, address, or kind + street). Footprints are projected at ground and roof level; the hit test covers both and the walls between.
 window.Buildings = (() => {
   let G, list = [], hover = null, tip;
   const pip = (x, y, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
@@ -33,8 +33,8 @@ window.Buildings = (() => {
     el.addEventListener("mousemove", (ev) => {
       const r = el.getBoundingClientRect(), p = opts.viewer.viewport.viewerElementToImageCoordinates(new OpenSeadragon.Point(ev.clientX - r.left, ev.clientY - r.top));
       const b = hit(p.x, p.y); hover = b;
-      if (b && b.n) { tip.textContent = b.n; tip.style.display = "block"; tip.style.left = ev.clientX + 14 + "px"; tip.style.top = ev.clientY + 14 + "px"; } else tip.style.display = "none";
-      el.style.cursor = b && b.n ? "pointer" : "";
+      if (b) { tip.textContent = b.l || b.n; tip.style.display = "block"; tip.style.left = ev.clientX + 14 + "px"; tip.style.top = ev.clientY + 14 + "px"; } else tip.style.display = "none";
+      el.style.cursor = b ? "pointer" : "";
     });
     el.addEventListener("mouseleave", () => { hover = null; tip.style.display = "none"; });
   }
