@@ -7,3 +7,8 @@ public/depth.bin
 public/geo.json
 public/map.json
 .DS_Store
+
+# keep the two Stability comparison previews, ignore the rest of out/
+!out/
+out/*
+!out/preview-*.jpg

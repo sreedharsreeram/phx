@@ -11,6 +11,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@aws-sdk/client-bedrock-runtime": "^3.1175.0",
     "adm-zip": "^0.6.1",
     "csv-parse": "^7.0.3",
     "gtfs-realtime-bindings": "^3.0.0",

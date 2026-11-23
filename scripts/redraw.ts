@@ -4,6 +4,7 @@
 import sharp from "sharp";
 import { mkdirSync, existsSync } from "node:fs";
 import { CHUNK } from "../config";
+import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 
 const geo = JSON.parse(await Bun.file("data/geo.json").text());
 const PROVIDER = process.env.REDRAW_PROVIDER || "mock", WIN = 1024, PAD = 96, only = process.argv[2];
@@ -40,13 +41,34 @@ const providers: Record<string, (png: Buffer, size: number) => Promise<Buffer>> 
     const j = await r.json(); return Buffer.from(j.data[0].b64_json, "base64");
   },
   async gemini(png) {
-    const model = process.env.GEMINI_IMAGE_MODEL || "gemini-2.5-flash-image";
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, { method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: STYLE }, { inline_data: { mime_type: "image/png", data: png.toString("base64") } }] }], generationConfig: { responseModalities: ["IMAGE"] } }) });
-    if (!r.ok) throw new Error(`gemini ${r.status}: ${(await r.text()).slice(0, 300)}`);
-    const j = await r.json(); const part = j.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData || p.inline_data); if (!part) throw new Error("gemini returned no image");
-    return Buffer.from((part.inlineData ?? part.inline_data).data, "base64");
+    // newest first; a model the key cannot use (free tier, quota) falls through to the next
+    const models = (process.env.GEMINI_IMAGE_MODEL || "gemini-3-pro-image,gemini-3.1-flash-image,gemini-2.5-flash-image").split(",");
+    let lastErr = "";
+    for (const model of models) for (let attempt = 0; attempt < 3; attempt++) {
+      const cfg: any = { responseModalities: ["IMAGE"] }; if (model.startsWith("gemini-3")) cfg.imageConfig = { aspectRatio: "1:1", imageSize: model.includes("pro") ? "2K" : "1K" };
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${process.env.GEMINI_API_KEY}`, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ contents: [{ parts: [{ text: STYLE }, { inline_data: { mime_type: "image/png", data: png.toString("base64") } }] }], generationConfig: cfg }) });
+      if (r.status === 429) { lastErr = `${model} 429`; console.log(`  ${model}: rate limited, waiting`); await Bun.sleep(20000 * (attempt + 1)); continue; }
+      if (!r.ok) { lastErr = `${model} ${r.status}: ${(await r.text()).slice(0, 200)}`; console.log("  " + lastErr); break; }
+      const j = await r.json(); const part = j.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData || p.inline_data);
+      if (!part) { lastErr = `${model} returned no image: ${JSON.stringify(j).slice(0, 200)}`; console.log("  " + lastErr); break; }
+      console.log(`  ${model} ok`); return Buffer.from((part.inlineData ?? part.inline_data).data, "base64");
+    }
+    throw new Error(lastErr);
   },
+};
+// Amazon Bedrock: Stability control-structure keeps the render's layout and repaints it in the prompt's style
+providers.bedrock = async (png) => {
+  const client = new BedrockRuntimeClient({ region: process.env.AWS_REGION || "us-east-1" });
+  const modelId = process.env.BEDROCK_IMAGE_MODEL || "us.stability.stable-image-control-structure-v1:0";
+  const body: any = { prompt: STYLE.replace(/\s+/g, " ").trim(), image: png.toString("base64"), control_strength: Number(process.env.CONTROL_STRENGTH || 0.75), output_format: "png",
+    negative_prompt: "photorealistic, blurry, text, letters, watermark, people, cars, extra buildings, distorted streets, 3d render" };
+  if (process.env.SEED) body.seed = Number(process.env.SEED);
+  const r = await client.send(new InvokeModelCommand({ modelId, contentType: "application/json", accept: "application/json", body: JSON.stringify(body) }));
+  const j = JSON.parse(new TextDecoder().decode(r.body));
+  if (!j.images?.[0]) throw new Error(`bedrock: ${JSON.stringify(j).slice(0, 300)}`);
+  if (j.finish_reasons?.[0] && j.finish_reasons[0] !== null) console.log("  bedrock finish:", j.finish_reasons[0]);
+  return Buffer.from(j.images[0], "base64");
 };
 const redraw = providers[PROVIDER]; if (!redraw) throw new Error(`unknown provider ${PROVIDER}`);
 
@@ -58,14 +80,14 @@ const acc = new Map<string, sharp.OverlayOptions[]>();
 let n = 0, t0 = Date.now();
 for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++) {
   const cx = Math.floor((wx * WIN) / CHUNK), cy = Math.floor((wy * WIN) / CHUNK); if (only && only !== `${cx},${cy}`) continue;
-  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `out/redraw-cache/${PROVIDER}_${wx}_${wy}.png`;
+  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `out/redraw-cache/${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}_${wx}_${wy}.png`;
   let out: Buffer;
   if (existsSync(cache)) out = Buffer.from(await Bun.file(cache).arrayBuffer());
   else {
     const src = await window_(px, py, size, size);
     // skip windows that are plain ground: nothing to redraw, and it keeps the bill down
     const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) continue;
-    const sendSize = PROVIDER === "openai" ? 1024 : size;   // gpt-image sizes are fixed; scale there and back
+    const sendSize = PROVIDER === "openai" || PROVIDER === "bedrock" ? 1024 : size;   // fixed/1 MP input sizes; scale there and back
     const sent = sendSize === size ? src : await sharp(src).resize(sendSize, sendSize).png().toBuffer();
     const got = await redraw(sent, sendSize);
     out = await sharp(got).resize(size, size, { fit: "fill" }).png().toBuffer();
