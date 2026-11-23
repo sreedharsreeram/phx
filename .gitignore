@@ -12,3 +12,6 @@ public/map.json
 !out/
 out/*
 !out/preview-*.jpg
+!out/tempe/
+out/tempe/*
+!out/tempe/probe-*.jpg

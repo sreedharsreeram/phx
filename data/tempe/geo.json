@@ -1,0 +1,75 @@
+{
+ "center": {
+  "lat": 33.424,
+  "lon": -111.9375
+ },
+ "mPerDegLat": 111319.49079327357,
+ "mPerDegLon": 92909.16228971285,
+ "pitch": 45,
+ "mpp": 0.15,
+ "x0": -1207.819109766753,
+ "y1": 989.1396112635878,
+ "W": 16384,
+ "H": 12288,
+ "extent": {
+  "e0": -1207.819109766753,
+  "e1": 1207.819109766753,
+  "n0": -1168.8546533294168,
+  "n1": 1168.8546533294168
+ },
+ "depthGrid": {
+  "cell": 4,
+  "w": 4096,
+  "h": 3072
+ },
+ "palette": {
+  "ground": "#eee5d6",
+  "road": "#c9c3b9",
+  "roadService": "#d6d0c6",
+  "roadCasing": "#a9a093",
+  "sidewalk": "#f4efe5",
+  "path": "#e4dccd",
+  "bridgeShadow": "#cfc5b4",
+  "laneYellow": "#dcb64f",
+  "laneWhite": "#f6f3ec",
+  "platform": "#ddd6c9",
+  "pool": "#7fc4e0",
+  "dirt": "#e3d6bf",
+  "runway": "#d9d4ca",
+  "apron": "#e3ded4",
+  "parking": "#e6dfd3",
+  "green": "#b8cc95",
+  "stadium": "#a9c48a",
+  "water": "#8fb9d2",
+  "railBed": "#c9c0b1",
+  "lightRailBed": "#cfc5b4",
+  "rail": "#8b8378",
+  "railTie": "#b7ad9c",
+  "hvac": "#d9d5cd",
+  "shelter": "#8e8a84",
+  "palm": "#6f9a52",
+  "asu": [
+   "#b9764f",
+   "#c98a5e",
+   "#a8644a",
+   "#d4a27a"
+  ],
+  "buildings": [
+   "#e7d8c3",
+   "#dfd5c6",
+   "#e4cfbf",
+   "#d9d2cb",
+   "#e9dfd0",
+   "#d8cbbd",
+   "#e2d3c9"
+  ],
+  "tower": "#c9d3dc",
+  "edge": "#5a4e42",
+  "tree": "#7a9e62",
+  "trunk": "#8a6a4d",
+  "pole": "#4d4842",
+  "lamp": "#3a3632"
+ },
+ "map": "tempe",
+ "title": "Downtown Tempe"
+}

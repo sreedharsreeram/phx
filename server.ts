@@ -1,6 +1,8 @@
 // Serves the site and a small JSON API over Valley Metro's GTFS-Realtime feeds (cached, so the upstream sees one poll per interval).
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import { GTFS_RT, BBOX, ADSB_URL, ADSB_FALLBACK } from "./config";
+import { GTFS_RT, MAPS, ADSB_URL, ADSB_FALLBACK } from "./config";
+import { readdirSync, existsSync } from "node:fs";
+const BBOX = MAPS.phx.bbox;   // vehicles are filtered to the widest map; each client filters further by what it shows
 
 const PAD = 0.03;   // degrees of slack around the footprint so vehicles slide in from the edges
 const cache: Record<string, { at: number; body: string }> = {};
@@ -26,8 +28,8 @@ async function alerts() {
   return feed.entity.map((e) => ({ id: e.id, routes: e.alert?.informedEntity?.map((i) => i.routeId).filter(Boolean), header: e.alert?.headerText?.translation?.[0]?.text, body: e.alert?.descriptionText?.translation?.[0]?.text }));
 }
 // trip updates -> per-stop predicted arrivals (only for stops inside the footprint) and per-trip delay
-const transit = JSON.parse(await Bun.file("public/data/transit.json").text()) as { stops: { id: string }[] };
-const footprintStops = new Set(transit.stops.map((s) => s.id));
+const footprintStops = new Set<string>();
+for (const m of readdirSync("public/maps")) if (existsSync(`public/maps/${m}/transit.json`)) for (const s of JSON.parse(await Bun.file(`public/maps/${m}/transit.json`).text()).stops) footprintStops.add(s.id);
 async function arrivals() {
   const res = await fetch(GTFS_RT("realtime"), { headers: { "user-agent": "smallphx/0.1" } });
   if (!res.ok) throw new Error(`upstream ${res.status}`);

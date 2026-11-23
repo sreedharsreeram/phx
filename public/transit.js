@@ -127,7 +127,7 @@ window.Transit = (() => {
   }
   function start(opts) {
     ({ viewer, G } = opts); ui = opts;
-    return Promise.all([fetch("/geo.json").then((r) => r.json()), fetch("/data/transit.json").then((r) => r.json())]).then(([g, d]) => {
+    return Promise.all([fetch(opts.base + "geo.json").then((r) => r.json()), fetch(opts.base + "transit.json").then((r) => r.json())]).then(([g, d]) => {
       geo = g; data = d; buildShapes(); poll(); Layers.add({ name: "transit", draw });
     });
   }

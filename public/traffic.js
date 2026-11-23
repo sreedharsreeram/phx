@@ -2,7 +2,7 @@
 // and thin out or thicken with the time of day in Phoenix. A share of them are robotaxis.
 window.Traffic = (() => {
   let G, ui, nodes, edges, out, signals, cars = [], density = 0, lastSim = 0;
-  const SPEED_KPH = [105, 60, 80, 65, 50, 60, 50, 40, 25];   // by class index from prep-scene
+  const SPEED_KPH = [105, 60, 80, 65, 50, 60, 50, 40, 25, 25];   // by class index from prep-scene
   const CAR_LEN = 4.6, GAP = 2.2, LANE_W = 3.2, ROBOTAXI = 0.07;
   const COLORS = ["#f3f1ec", "#e8e4dc", "#d9d4cb", "#bfc3c9", "#9ea4ab", "#5d6166", "#3a3d42", "#b64a3f", "#2f5f8a", "#c9a24a", "#f3f1ec", "#e8e4dc"];
   const hour = () => { const d = new Date(); return (d.getUTCHours() - 7 + 24) % 24 + d.getUTCMinutes() / 60; };   // Phoenix has no DST
@@ -10,7 +10,7 @@ window.Traffic = (() => {
 
   function load(data) {
     nodes = data.nodes.map(([e, n]) => { const p = G.enToPixel(e, n, 0); return { e, n, x: p.x, y: p.y, out: [] }; });
-    edges = data.edges.map(([a, b, cls, oneway, lanes, z], i) => { const A = nodes[a], B = nodes[b], L = Math.hypot(B.e - A.e, B.n - A.n) || 0.1; return { i, a, b, cls, oneway, lanes, z, L, ux: (B.e - A.e) / L, un: (B.n - A.n) / L, cars: [], rev: -1 }; });
+    edges = data.edges.map(([a, b, cls, oneway, lanes, z, kph, w], i) => { const A = nodes[a], B = nodes[b], L = Math.hypot(B.e - A.e, B.n - A.n) || 0.1; const per = oneway ? lanes : Math.max(1, Math.floor(lanes / 2)); return { i, a, b, cls, oneway, lanes: per, w: w || lanes * 3.5, kph, z, L, ux: (B.e - A.e) / L, un: (B.n - A.n) / L, cars: [], rev: -1 }; });
     // two-way streets get a reverse edge; remember the pairing so cars never U-turn onto their own edge
     const n0 = edges.length;
     for (let i = 0; i < n0; i++) { const e = edges[i]; if (!e.oneway) { const r = { ...e, i: edges.length, a: e.b, b: e.a, ux: -e.ux, un: -e.un, cars: [], rev: i }; e.rev = r.i; edges.push(r); } }
@@ -44,7 +44,7 @@ window.Traffic = (() => {
     if (cars.length > want * 1.1) { const c = cars.pop(); c.e.cars.splice(c.e.cars.indexOf(c), 1); }
     for (const e of edges) if (e.cars.length > 1) e.cars.sort((a, b) => a.s - b.s);
     for (const c of cars) {
-      const e = c.e, vmax = (SPEED_KPH[e.cls] / 3.6) * (c.robo ? 0.9 : 0.85 + ((c.color.charCodeAt(1) % 7) / 7) * 0.3);
+      const e = c.e, vmax = ((e.kph || SPEED_KPH[e.cls] || 40) / 3.6) * (c.robo ? 0.9 : 0.85 + ((c.color.charCodeAt(1) % 7) / 7) * 0.3);
       // the car ahead in this lane on this edge, else on the next edge
       let gap = Infinity; const idx = e.cars.indexOf(c);
       for (let k = idx + 1; k < e.cars.length; k++) if (e.cars[k].lane === c.lane) { gap = e.cars[k].s - c.s - CAR_LEN; break; }
@@ -68,7 +68,8 @@ window.Traffic = (() => {
     if (view.scale < 0.12) return;   // too far out to see a car
     const L = (CAR_LEN / 0.5) * view.scale, Wd = (1.9 / 0.5) * view.scale;
     for (const c of cars) {
-      const e = c.e, A = nodes[e.a], off = LANE_W * (c.lane + 0.5 + (e.oneway ? -e.lanes / 2 + 0.5 - 0.5 : 0));   // right-hand traffic: offset to the right of travel
+      // lanes sit inside the drawn asphalt: one-way streets use the whole width, two-way streets the right half
+      const e = c.e, A = nodes[e.a], laneW = e.oneway ? e.w / e.lanes : e.w / 2 / e.lanes, off = e.oneway ? -e.w / 2 + (c.lane + 0.5) * laneW : (c.lane + 0.5) * laneW;
       const re = e.un, rn = -e.ux;   // right-hand normal
       const pe = A.e + e.ux * c.s + re * off, pn = A.n + e.un * c.s + rn * off;
       const p = G.enToPixel(pe, pn, 0.8 + e.z), [sx, sy] = view.toScreen(p.x, p.y);
@@ -83,5 +84,5 @@ window.Traffic = (() => {
       ctx.restore();
     }
   }
-  return { start(opts) { ({ G } = opts); ui = opts; fetch("/data/roads.json").then((r) => r.json()).then((d) => { load(d); Layers.add({ name: "traffic", enabled: () => ui.toggle.checked, draw }); }); }, cars: () => cars.length };
+  return { start(opts) { ({ G } = opts); ui = opts; fetch(opts.base + "roads.json").then((r) => r.json()).then((d) => { load(d); Layers.add({ name: "traffic", enabled: () => ui.toggle.checked, draw }); }); }, cars: () => cars.length };
 })();

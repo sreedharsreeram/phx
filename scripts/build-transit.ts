@@ -1,7 +1,9 @@
 // Static GTFS -> public/data/transit.json: routes, rail/streetcar shapes, and every stop inside the footprint.
 import AdmZip from "adm-zip";
 import { parse } from "csv-parse/sync";
-import { BBOX } from "../config";
+import { BBOX, DIRS } from "../config";
+import { mkdirSync } from "node:fs";
+mkdirSync(DIRS.pub, { recursive: true });
 
 const zip = new AdmZip("data/gtfs-static.zip");
 const table = (name: string) => parse(zip.readAsText(`${name}.txt`), { columns: true, skip_empty_lines: true }) as Record<string, string>[];
@@ -35,5 +37,5 @@ for (const st of table("stop_times")) {
 }
 const stopsOf = (sh: string) => (shapeStops.get(sh) ?? []).sort((a, b) => a.seq - b.seq).map((x) => x.stop);
 const out = { generated: new Date().toISOString(), bbox: BBOX, routes, stops, shapes: shapes.map((s) => ({ ...s, stops: stopsOf(s.id) })) };
-await Bun.write("public/data/transit.json", JSON.stringify(out));
+await Bun.write(`${DIRS.pub}/transit.json`, JSON.stringify(out));
 console.log(`routes ${Object.keys(routes).length}, stops in footprint ${stops.length}, rail shapes ${shapes.length}, ${(JSON.stringify(out).length / 1e6).toFixed(1)} MB`);

@@ -64,7 +64,9 @@
 <script src="/layers.js"></script><script src="/transit.js"></script><script src="/planes.js"></script><script src="/traffic.js"></script>
 <script>
 (async () => {
-  const [map, geo] = await Promise.all([fetch("/map.json").then((r) => r.json()), fetch("/geo.json").then((r) => r.json())]);
+  const mapName = new URLSearchParams(location.search).get("map") || "tempe", base = `/maps/${mapName}/`;
+  const [map, geo] = await Promise.all([fetch(base + "map.json").then((r) => r.json()), fetch(base + "geo.json").then((r) => r.json())]);
+  if (geo.title) document.querySelector("h1").textContent = "Small Phoenix · " + geo.title;
   const mobile = matchMedia("(pointer: coarse)").matches;
   const viewer = OpenSeadragon({
     id: "map", showNavigationControl: false, drawer: mobile ? "canvas" : ["webgl", "canvas"],
@@ -74,31 +76,31 @@
   });
   window.viewer = viewer;
   const G = IsoGeo.make(geo, null);
-  IsoGeo.load(geo).then((d) => { window.__depth = d; Object.assign(G, IsoGeo.make(geo, d)); }).catch((e) => console.warn("no depth grid", e));
+  IsoGeo.load(geo, base).then((d) => { window.__depth = d; Object.assign(G, IsoGeo.make(geo, d)); }).catch((e) => console.warn("no depth grid", e));
 
   // start on ASU unless the link says otherwise (#lat,lon,zoom)
   const start = (location.hash.match(/^#(-?[\d.]+),(-?[\d.]+),([\d.]+)/) || []).slice(1).map(Number);
   viewer.addHandler("open", () => {
-    const [lat, lon, z] = start.length ? start : [33.4215, -111.9340, 7];
+    const [lat, lon, z] = start.length ? start : [geo.center.lat, geo.center.lon, 3];
     const p = G.toPixel(lat, lon); viewer.viewport.zoomTo(z, null, true); viewer.viewport.panTo(viewer.viewport.imageToViewportCoordinates(p.x, p.y), true);
   });
-  const linkFor = () => { const c = viewer.viewport.viewportToImageCoordinates(viewer.viewport.getCenter()); const e = c.x * geo.mpp + geo.x0, n = (geo.y1 - c.y * geo.mpp) / G.S; return `#${(geo.center.lat + n / geo.mPerDegLat).toFixed(5)},${(geo.center.lon + e / geo.mPerDegLon).toFixed(5)},${viewer.viewport.getZoom().toFixed(2)}`; };
+  const linkFor = () => { const q = mapName === "tempe" ? "" : `?map=${mapName}`; const c = viewer.viewport.viewportToImageCoordinates(viewer.viewport.getCenter()); const e = c.x * geo.mpp + geo.x0, n = (geo.y1 - c.y * geo.mpp) / G.S; return `${q}#${(geo.center.lat + n / geo.mPerDegLat).toFixed(5)},${(geo.center.lon + e / geo.mPerDegLon).toFixed(5)},${viewer.viewport.getZoom().toFixed(2)}`; };
   viewer.addHandler("animation-finish", () => history.replaceState(null, "", linkFor()));
   document.getElementById("btn-share").onclick = async (ev) => { await navigator.clipboard.writeText(location.origin + "/" + linkFor()); ev.target.textContent = "Copied"; setTimeout(() => (ev.target.textContent = "Copy link"), 1200); };
 
   const card = document.getElementById("vcard"), followBtn = document.getElementById("follow");
   const setFollow = (on) => followBtn.classList.toggle("on", on);
-  const planesUI = { G, viewer, toggle: document.getElementById("t-planes"), status: document.getElementById("planes-status") };
+  const planesUI = { G, viewer, base, toggle: document.getElementById("t-planes"), status: document.getElementById("planes-status") };
   Layers.start({ viewer, canvas: document.getElementById("layer"), onSelect: (h) => {
     Planes.deselect(); Transit.select(null);
     if (!h) { card.classList.remove("on"); return; }
     if (h.kind === "plane") { const show = () => { card.classList.add("on"); card.innerHTML = Planes.card(h); card.querySelector("[data-follow]").onclick = () => { Transit.unfollow(); setFollow(Planes.follow(h.p.id)); show(); }; }; show(); }
     else Transit.select(h);
   } });
-  Transit.start({ viewer, G, status: document.getElementById("status"), card, onFollow: (on) => { Planes.unfollow(); setFollow(on); },
+  Transit.start({ viewer, G, base, status: document.getElementById("status"), card, onFollow: (on) => { Planes.unfollow(); setFollow(on); },
     toggles: { rail: document.getElementById("t-rail"), bus: document.getElementById("t-bus"), stops: document.getElementById("t-stops") } });
   Planes.start(planesUI);
-  Traffic.start({ G, toggle: document.getElementById("t-traffic") });
+  Traffic.start({ G, base, toggle: document.getElementById("t-traffic") });
   viewer.addHandler("canvas-drag", () => { Transit.unfollow(); Planes.unfollow(); setFollow(false); });
   followBtn.onclick = () => { Transit.unfollow(); Planes.unfollow(); setFollow(false); };
 })();

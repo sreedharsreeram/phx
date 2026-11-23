@@ -1,5 +1,7 @@
 // Writes data/geo.json (shared by the renderer and the site): the camera, the map's pixel extent, and the palette.
-import { BBOX, CENTER, MPP, PITCH_DEG, CHUNK, DEPTH_CELL_PX, M_PER_DEG_LAT, M_PER_DEG_LON, toEN } from "../config";
+import { BBOX, CENTER, MPP, PITCH_DEG, CHUNK, DEPTH_CELL_PX, M_PER_DEG_LAT, M_PER_DEG_LON, toEN, DIRS, MAP, MAPS } from "../config";
+import { mkdirSync } from "node:fs";
+mkdirSync(DIRS.data, { recursive: true });
 
 const th = (PITCH_DEG * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th);
 const sw = toEN(BBOX.south, BBOX.west), ne = toEN(BBOX.north, BBOX.east);
@@ -12,12 +14,13 @@ const geo = {
   x0, y1, W, H, extent: { e0: sw.e, e1: ne.e, n0: sw.n, n1: ne.n },
   depthGrid: { cell: DEPTH_CELL_PX, w: W / DEPTH_CELL_PX, h: H / DEPTH_CELL_PX },
   palette: {
-    ground: "#efe7da", road: "#f7f3ec", roadService: "#f1ece3", roadCasing: "#cdc3b4", path: "#e4dccd", bridgeShadow: "#d6ccbb",
+    ground: "#eee5d6", road: "#c9c3b9", roadService: "#d6d0c6", roadCasing: "#a9a093", sidewalk: "#f4efe5", path: "#e4dccd", bridgeShadow: "#cfc5b4", laneYellow: "#dcb64f", laneWhite: "#f6f3ec", platform: "#ddd6c9", pool: "#7fc4e0", dirt: "#e3d6bf",
     runway: "#d9d4ca", apron: "#e3ded4", parking: "#e6dfd3", green: "#b8cc95", stadium: "#a9c48a", water: "#8fb9d2",
-    railBed: "#c9c0b1", lightRailBed: "#cfc5b4", rail: "#8b8378",
+    railBed: "#c9c0b1", lightRailBed: "#cfc5b4", rail: "#8b8378", railTie: "#b7ad9c", hvac: "#d9d5cd", shelter: "#8e8a84", palm: "#6f9a52",
+    asu: ["#b9764f", "#c98a5e", "#a8644a", "#d4a27a"],
     buildings: ["#e7d8c3", "#dfd5c6", "#e4cfbf", "#d9d2cb", "#e9dfd0", "#d8cbbd", "#e2d3c9"], tower: "#c9d3dc", edge: "#5a4e42",
     tree: "#7a9e62", trunk: "#8a6a4d", pole: "#4d4842", lamp: "#3a3632",
   },
 };
-await Bun.write("data/geo.json", JSON.stringify(geo, null, 1));
+await Bun.write(`${DIRS.data}/geo.json`, JSON.stringify({ ...geo, map: MAP, title: MAPS[MAP].title }, null, 1));
 console.log(`map ${W}x${H} px (${(W * H / 1e6).toFixed(0)} Mpx), chunks ${W / CHUNK}x${H / CHUNK}, depth grid ${geo.depthGrid.w}x${geo.depthGrid.h}`);

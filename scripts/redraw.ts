@@ -3,30 +3,32 @@
 //   REDRAW_PROVIDER=openai OPENAI_API_KEY=… bun run scripts/redraw.ts [cx,cy]
 import sharp from "sharp";
 import { mkdirSync, existsSync } from "node:fs";
-import { CHUNK } from "../config";
+import { CHUNK, DIRS } from "../config";
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 
-const geo = JSON.parse(await Bun.file("data/geo.json").text());
+const geo = JSON.parse(await Bun.file(`${DIRS.data}/geo.json`).text());
 const PROVIDER = process.env.REDRAW_PROVIDER || "mock", WIN = 1024, PAD = 96, only = process.argv[2];
+const UP = Number(process.env.UPSCALE || 1);   // 2 = ask the model for a 2x window and build 2x chunks (map gets twice the pixels)
 const nx = geo.W / CHUNK, ny = geo.H / CHUNK;
-mkdirSync("out/redrawn", { recursive: true }); mkdirSync("out/redraw-cache", { recursive: true });
+mkdirSync(`${DIRS.out}/redrawn`, { recursive: true }); mkdirSync(`${DIRS.out}/redraw-cache`, { recursive: true });
 
 const REF = process.env.REF ? Buffer.from(await Bun.file(process.env.REF).arrayBuffer()) : null;   // a finished window every call should match
-const STYLE = `Redraw this top-down 45-degree isometric city map render as a warm, hand-illustrated map in the style of a detailed
-isometric city poster: soft gouache textures, subtle paper grain, gentle ink outlines, pastel desert palette (cream ground,
-sage greens, dusty terracotta and sand buildings, slate-blue glass towers, pale blue water). Keep EVERY street, building
-footprint, building height, tree, parking lot and shadow exactly where it is and the same size; do not add, remove or move
-anything; do not add text, labels, people or vehicles. This is Tempe / Phoenix, Arizona: desert light, palo verde and palm
-trees, flat roofs with rooftop units. Output a single image of the same framing.` + (REF ? `
-The second image is a finished window of the same map: match its palette, line weight, paper tone, tree style and
-shading EXACTLY so the two tile together seamlessly.` : "");
+const STYLE = `Redraw this 45-degree isometric map render of downtown Tempe, Arizona as a richly detailed hand-illustrated city
+map, like a fine ink-and-watercolor architectural illustration. Keep EVERY street, sidewalk, lane marking, crosswalk, building
+footprint, building height, roof shape, rooftop unit, tree and shadow exactly where it is, at the same size; do not add, remove,
+move or widen anything; no text, labels or people. Elaborate the surfaces realistically: window grids and balconies on facades,
+glass curtain walls with sky reflections, rooftop ducts and HVAC units, parapets, awnings and storefronts at street level, parked
+cars in parking stalls, striped asphalt, concrete sidewalks with curbs, desert landscaping, palm and palo verde trees with soft
+shadows. Warm Arizona afternoon light, long soft shadows. Output the same framing.` + (REF ? `
+The second image is a finished window of the same map: match its palette, line weight, paper tone, tree style and shading
+EXACTLY so the two tile together seamlessly.` : "");
 
 // one window of the full map, read across chunk boundaries
 async function window_(px: number, py: number, w: number, h: number) {
   const parts: sharp.OverlayOptions[] = [];
   for (let cy = Math.floor(py / CHUNK); cy <= Math.floor((py + h - 1) / CHUNK); cy++) for (let cx = Math.floor(px / CHUNK); cx <= Math.floor((px + w - 1) / CHUNK); cx++) {
     if (cx < 0 || cy < 0 || cx >= nx || cy >= ny) continue;
-    const f = `out/chunks/${cx}_${cy}.png`; if (!existsSync(f)) continue;
+    const f = `${DIRS.out}/chunks/${cx}_${cy}.png`; if (!existsSync(f)) continue;
     const l = Math.max(px, cx * CHUNK), t = Math.max(py, cy * CHUNK), r = Math.min(px + w, (cx + 1) * CHUNK), b = Math.min(py + h, (cy + 1) * CHUNK);
     parts.push({ input: await sharp(f).extract({ left: l - cx * CHUNK, top: t - cy * CHUNK, width: r - l, height: b - t }).png().toBuffer(), left: l - px, top: t - py });
   }
@@ -35,10 +37,10 @@ async function window_(px: number, py: number, w: number, h: number) {
 
 const providers: Record<string, (png: Buffer, size: number) => Promise<Buffer>> = {
   // local stand-in so the plumbing (windows, feathering, tiling) can run without any key
-  async mock(png) { return sharp(png).modulate({ saturation: 0.92 }).blur(0.6).sharpen({ sigma: 1.2 }).linear(1.04, -6).png().toBuffer(); },
+  async mock(png, size) { return sharp(png).resize(size, size).modulate({ saturation: 0.92 }).blur(0.6).sharpen({ sigma: 1.2 }).linear(1.04, -6).png().toBuffer(); },
   async openai(png, size) {
     const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-    for (const sz of [size, 1024]) {   // newer models take larger squares; fall back to 1024 if this one does not
+    for (const sz of [size, 1024]) {   // size is already the wanted output (window x UPSCALE); fall back to 1024 if refused
       const fd = new FormData(); fd.append("model", model); fd.append("prompt", STYLE); fd.append("size", `${sz}x${sz}`); fd.append("quality", process.env.OPENAI_IMAGE_QUALITY || "high"); if (/gpt-image-1(\.|$)/.test(model)) fd.append("input_fidelity", "high");
       fd.append("image[]", new Blob([png], { type: "image/png" }), "window.png");
       if (REF) fd.append("image[]", new Blob([REF], { type: "image/png" }), "reference.png");
@@ -82,42 +84,42 @@ providers.bedrock = async (png) => {
 const redraw = providers[PROVIDER]; if (!redraw) throw new Error(`unknown provider ${PROVIDER}`);
 
 // feather mask: full in the middle, fading over PAD px at each edge, so overlapping windows blend
-const mask = await (async () => { const n = WIN + 2 * PAD, raw = Buffer.alloc(n * n); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const fx = Math.min(1, Math.min(x, n - 1 - x) / PAD), fy = Math.min(1, Math.min(y, n - 1 - y) / PAD); raw[y * n + x] = Math.round(255 * Math.min(fx, fy)); } return sharp(raw, { raw: { width: n, height: n, channels: 1 } }).png().toBuffer(); })();
+const mask = await (async () => { const n = (WIN + 2 * PAD) * UP, PADU = PAD * UP, raw = Buffer.alloc(n * n); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const fx = Math.min(1, Math.min(x, n - 1 - x) / PADU), fy = Math.min(1, Math.min(y, n - 1 - y) / PADU); raw[y * n + x] = Math.round(255 * Math.min(fx, fy)); } return sharp(raw, { raw: { width: n, height: n, channels: 1 } }).png().toBuffer(); })();
 
 // accumulate per chunk: redrawn windows composited with the feather mask onto the plain render
 const acc = new Map<string, sharp.OverlayOptions[]>();
 let n = 0, t0 = Date.now();
 for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++) {
   const cx = Math.floor((wx * WIN) / CHUNK), cy = Math.floor((wy * WIN) / CHUNK); if (only && only !== `${cx},${cy}`) continue;
-  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `out/redraw-cache/${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") : ""}_${wx}_${wy}.png`;
+  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `${DIRS.out}/redraw-cache/${UP > 1 ? "x" + UP + "-" : ""}${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") : ""}_${wx}_${wy}.png`;
   let out: Buffer;
   if (existsSync(cache)) out = Buffer.from(await Bun.file(cache).arrayBuffer());
   else {
     const src = await window_(px, py, size, size);
     // skip windows that are plain ground: nothing to redraw, and it keeps the bill down
     const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) continue;
-    const sendSize = PROVIDER === "openai" ? Number(process.env.OPENAI_IMAGE_SIZE || 1024) : PROVIDER === "bedrock" ? 1024 : size;   // fixed/1 MP input sizes; scale there and back
-    const sent = sendSize === size ? src : await sharp(src).resize(sendSize, sendSize).png().toBuffer();
-    const got = await redraw(sent, sendSize);
-    out = await sharp(got).resize(size, size, { fit: "fill" }).png().toBuffer();
+    const outSize = size * UP, sent = PROVIDER === "bedrock" ? await sharp(src).resize(1024, 1024).png().toBuffer() : src;
+    const got = await redraw(sent, outSize);
+    out = await sharp(got).resize(outSize, outSize, { fit: "fill" }).png().toBuffer();
     await Bun.write(cache, out); n++;
     if (n % 10 === 0) console.log(`${n} windows redrawn, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   }
   const masked = await sharp(out).ensureAlpha().joinChannel(mask, { raw: undefined }).removeAlpha().joinChannel(mask).png().toBuffer();
   for (let cy2 = Math.max(0, Math.floor(py / CHUNK)); cy2 <= Math.min(ny - 1, Math.floor((py + size - 1) / CHUNK)); cy2++) for (let cx2 = Math.max(0, Math.floor(px / CHUNK)); cx2 <= Math.min(nx - 1, Math.floor((px + size - 1) / CHUNK)); cx2++) {
-    const k = `${cx2}_${cy2}`; (acc.get(k) ?? acc.set(k, []).get(k)!).push({ input: masked, left: px - cx2 * CHUNK, top: py - cy2 * CHUNK });
+    const k = `${cx2}_${cy2}`; (acc.get(k) ?? acc.set(k, []).get(k)!).push({ input: masked, left: (px - cx2 * CHUNK) * UP, top: (py - cy2 * CHUNK) * UP });
   }
 }
+const OUTCHUNK = CHUNK * UP, WSIZE = (WIN + 2 * PAD) * UP;
 for (const [k, parts] of acc) {
-  const base = `out/chunks/${k}.png`; if (!existsSync(base)) continue;
+  const base = `${DIRS.out}/chunks/${k}.png`; if (!existsSync(base)) continue;
   if (only && k !== only.replace(",", "_")) continue;
-  // sharp cannot composite outside the canvas: crop each overlay to the chunk first
   const clipped: sharp.OverlayOptions[] = [];
   for (const p of parts) {
-    const l = Math.max(0, p.left as number), t = Math.max(0, p.top as number), r = Math.min(CHUNK, (p.left as number) + WIN + 2 * PAD), b = Math.min(CHUNK, (p.top as number) + WIN + 2 * PAD);
+    const l = Math.max(0, p.left as number), t = Math.max(0, p.top as number), r = Math.min(OUTCHUNK, (p.left as number) + WSIZE), b = Math.min(OUTCHUNK, (p.top as number) + WSIZE);
     if (r <= l || b <= t) continue;
     clipped.push({ input: await sharp(p.input as Buffer).extract({ left: l - (p.left as number), top: t - (p.top as number), width: r - l, height: b - t }).png().toBuffer(), left: l, top: t });
   }
-  await sharp(base).composite(clipped).png().toFile(`out/redrawn/${k}.png`);
+  const bg = UP > 1 ? await sharp(base).resize(OUTCHUNK, OUTCHUNK, { kernel: "lanczos3" }).png().toBuffer() : base;
+  await sharp(bg).composite(clipped).png().toFile(`${DIRS.out}/redrawn/${k}.png`);
 }
-console.log(`redrew ${n} new windows with ${PROVIDER}; ${acc.size} chunks written to out/redrawn/`);
+console.log(`redrew ${n} new windows with ${PROVIDER}; ${acc.size} chunks written to ${DIRS.out}/redrawn/`);

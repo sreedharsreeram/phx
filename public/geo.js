@@ -28,5 +28,5 @@
     const pxPerMetreNorth = S / geo.mpp, pxPerMetreEast = 1 / geo.mpp;
     return { toEN, toPixel, enToPixel, sceneDepth, hidden, heading, S, C, pxPerMetreNorth, pxPerMetreEast };
   }
-  root.IsoGeo = { make, load: (geo) => undelta("/depth.bin", geo.depthGrid.w * geo.depthGrid.h, geo.depthGrid.w) };
+  root.IsoGeo = { make, load: (geo, base = "/") => undelta(base + "depth.bin", geo.depthGrid.w * geo.depthGrid.h, geo.depthGrid.w) };
 })(window);

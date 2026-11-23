@@ -7,124 +7,171 @@ import * as THREE from "three";
 import * as BGU from "three/addons/utils/BufferGeometryUtils.js";
 
 const P = Object.fromEntries(new URLSearchParams(location.search));
-const CHUNK = +P.chunk || 2048, DEPTH_DIV = +P.depthDiv || 4;
-const [scene, geo] = await Promise.all([fetch("/data/scene.json").then((r) => r.json()), fetch("/data/geo.json").then((r) => r.json())]);
+const CHUNK = +P.chunk || 2048, DEPTH_DIV = +P.depthDiv || 4, DATA = P.data || "/data/tempe";
+const [scene, geo] = await Promise.all([fetch(`${DATA}/scene.json`).then((r) => r.json()), fetch(`${DATA}/geo.json`).then((r) => r.json())]);
 const th = (geo.pitch * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th);
-
-// World: X = east, Y = up, Z = -north. Camera is far to the south and above, looking north and down by `pitch`.
-const canvas = document.getElementById("c"); canvas.width = canvas.height = CHUNK;
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: false, powerPreference: "high-performance" });
-renderer.setPixelRatio(1); renderer.setSize(CHUNK, CHUNK, false);
-renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-const world = new THREE.Scene(); world.background = new THREE.Color(geo.palette.ground);
-const DIST = 30000;
-const camDir = new THREE.Vector3(0, -S, -C), camUp = new THREE.Vector3(0, C, -S);
-const camera = window.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2 * DIST + 5000);
-camera.position.copy(camDir.clone().multiplyScalar(-DIST)); camera.up.copy(camUp); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
-
-world.add(new THREE.HemisphereLight(0xfff4e6, 0xcfc6b8, 1.0));
-const SUN_DIR = new THREE.Vector3(-0.55, 1.25, 0.75).normalize();   // afternoon sun from the south-west, fairly high: short shadows
-const sun = new THREE.DirectionalLight(0xffffff, 1.7); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
-world.add(sun, sun.target);
-
-const col = (hex) => new THREE.Color(hex);
-const pal = geo.palette;
+const pal = geo.palette, col = (hex) => new THREE.Color(hex);
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295; };
 
-// ---- ground + flat areas (polygons, slightly stacked in z to avoid fighting)
+// World: X = east, Y = up, Z = -north. Camera far to the south and above, looking north and down by `pitch`.
+const canvas = document.getElementById("c"); canvas.width = canvas.height = CHUNK;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: false, powerPreference: "high-performance" });
+renderer.setPixelRatio(1); renderer.setSize(CHUNK, CHUNK, false); renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+const world = new THREE.Scene(); world.background = col(pal.ground);
+const DIST = 30000, camDir = new THREE.Vector3(0, -S, -C), camUp = new THREE.Vector3(0, C, -S);
+const camera = window.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2 * DIST + 5000);
+camera.position.copy(camDir.clone().multiplyScalar(-DIST)); camera.up.copy(camUp); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+world.add(new THREE.HemisphereLight(0xfff4e6, 0xd8cfc0, 1.25));
+const SUN_DIR = new THREE.Vector3(-0.55, 1.25, 0.75).normalize();
+const sun = new THREE.DirectionalLight(0xfff3e0, 1.35); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6; world.add(sun, sun.target);
+
+const lambert = (c, extra = {}) => new THREE.MeshLambertMaterial({ color: col(c), ...extra });
+const addMesh = (g, m, { cast = false, receive = true } = {}) => { if (!g) return; const mesh = new THREE.Mesh(g, m); mesh.castShadow = cast; mesh.receiveShadow = receive; world.add(mesh); return mesh; };
 const toShape = (o, holes) => { const sh = new THREE.Shape(o.map(([e, n]) => new THREE.Vector2(e, n))); for (const h of holes ?? []) sh.holes.push(new THREE.Path(h.map(([e, n]) => new THREE.Vector2(e, n)))); return sh; };
 const flat = (items, color, y) => {
-  const gs = [];
-  for (const a of items) { try { const g = new THREE.ShapeGeometry(toShape(a.o, a.i)); g.rotateX(-Math.PI / 2); g.translate(0, y, 0); gs.push(g); } catch {} }
-  if (!gs.length) return;
-  const m = new THREE.Mesh(BGU.mergeGeometries(gs, false), new THREE.MeshLambertMaterial({ color: col(color) })); m.receiveShadow = true; world.add(m);
+  const gs = []; for (const a of items) { try { const g = new THREE.ShapeGeometry(toShape(a.o, a.i)); g.rotateX(-Math.PI / 2); g.translate(0, y, 0); gs.push(g); } catch {} }
+  if (gs.length) addMesh(BGU.mergeGeometries(gs, false), lambert(color));
 };
-{
-  const { e0, e1, n0, n1 } = geo.extent, g = new THREE.PlaneGeometry(e1 - e0 + 4000, n1 - n0 + 4000); g.rotateX(-Math.PI / 2); g.translate((e0 + e1) / 2, -0.5, -(n0 + n1) / 2);
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: col(pal.ground) })); m.receiveShadow = true; world.add(m);
-}
+{ const { e0, e1, n0, n1 } = geo.extent, g = new THREE.PlaneGeometry(e1 - e0 + 4000, n1 - n0 + 4000); g.rotateX(-Math.PI / 2); g.translate((e0 + e1) / 2, -0.5, -(n0 + n1) / 2); addMesh(g, lambert(pal.ground)); }
 const by = (k) => scene.areas.filter((a) => a.k === k);
-flat(by("parking"), pal.parking, 0.02); flat(by("apron"), pal.apron, 0.03); flat(by("green"), pal.green, 0.05); flat(by("stadium"), pal.stadium, 0.06); flat(by("water"), pal.water, 0.08);
+flat(by("dirt"), pal.dirt, 0.01); flat(by("parking"), pal.parking, 0.02); flat(by("apron"), pal.apron, 0.03); flat(by("green"), pal.green, 0.05); flat(by("stadium"), pal.stadium, 0.06); flat(by("platform"), pal.platform, 0.3); flat(by("water"), pal.water, 0.08); flat(by("pool"), pal.pool, 0.09);
 
-// ---- ribbons (roads, rails, runways): each segment a quad plus a disc at joints, lifted by z
-function ribbon(items, widthOf, colorOf, lift) {
+// ---- ribbons: quads per segment + joint discs, flat normals up. dash(on, off) makes broken lines.
+function ribbon(items, widthOf, colorOf, liftOf, dash) {
   const pos = [], colr = [], idx = []; let vi = 0;
   const push = (x, y, z, c) => { pos.push(x, y, z); colr.push(c.r, c.g, c.b); return vi++; };
+  const quad = (ax, an, bx, bn, w, y, c) => { const dx = bx - ax, dn = bn - an, L = Math.hypot(dx, dn); if (L < 0.01) return; const nx = (-dn / L) * w, nn = (dx / L) * w;
+    const a = push(ax + nx, y, -(an + nn), c), b = push(ax - nx, y, -(an - nn), c), d = push(bx + nx, y, -(bn + nn), c), e = push(bx - nx, y, -(bn - nn), c); idx.push(a, b, d, b, e, d); };
   for (const it of items) {
-    const w = widthOf(it) / 2, c = colorOf(it), y = lift(it), p = it.p;
-    for (let i = 0; i + 1 < p.length; i++) {
-      const [ax, an] = p[i], [bx, bn] = p[i + 1]; const dx = bx - ax, dn = bn - an, L = Math.hypot(dx, dn); if (L < 0.01) continue;
-      const nx = (-dn / L) * w, nn = (dx / L) * w;
-      const a = push(ax + nx, y, -(an + nn), c), b = push(ax - nx, y, -(an - nn), c), d = push(bx + nx, y, -(bn + nn), c), e = push(bx - nx, y, -(bn - nn), c);
-      idx.push(a, b, d, b, e, d);
-    }
-    if (w > 1.2) for (let i = 1; i + 1 < p.length; i++) {   // joint discs
-      const [cx, cn] = p[i], c0 = push(cx, y, -cn, c), K = 8; const ring = [];
-      for (let k = 0; k < K; k++) { const t = (k / K) * Math.PI * 2; ring.push(push(cx + Math.cos(t) * w, y, -(cn + Math.sin(t) * w), c)); }
-      for (let k = 0; k < K; k++) idx.push(c0, ring[k], ring[(k + 1) % K]);
+    const w = widthOf(it) / 2, c = colorOf(it), y = liftOf(it), p = it.p; if (w <= 0) continue;
+    if (!dash) {
+      for (let i = 0; i + 1 < p.length; i++) quad(p[i][0], p[i][1], p[i + 1][0], p[i + 1][1], w, y, c);
+      if (w > 0.6) for (let i = 1; i + 1 < p.length; i++) { const [cx, cn] = p[i], c0 = push(cx, y, -cn, c), K = 10, ring = []; for (let k = 0; k < K; k++) { const t = (k / K) * Math.PI * 2; ring.push(push(cx + Math.cos(t) * w, y, -(cn + Math.sin(t) * w), c)); } for (let k = 0; k < K; k++) idx.push(c0, ring[k], ring[(k + 1) % K]); }
+    } else {   // walk the polyline laying dashes
+      let carry = 0, on = true;
+      for (let i = 0; i + 1 < p.length; i++) {
+        const [ax, an] = p[i], [bx, bn] = p[i + 1], L = Math.hypot(bx - ax, bn - an); if (L < 0.01) continue; const ux = (bx - ax) / L, un = (bn - an) / L; let s = 0;
+        while (s < L) { const len = Math.min((on ? dash[0] : dash[1]) - carry, L - s); if (on) quad(ax + ux * s, an + un * s, ax + ux * (s + len), an + un * (s + len), w, y, c); s += len; carry += len; if (carry >= (on ? dash[0] : dash[1]) - 1e-6) { carry = 0; on = !on; } }
+      }
     }
   }
+  if (!idx.length) return;
   const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute("color", new THREE.Float32BufferAttribute(colr, 3)); g.setIndex(idx);
   const nrm = new Float32Array(vi * 3); for (let i = 0; i < vi; i++) nrm[i * 3 + 1] = 1; g.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
-  const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ vertexColors: true })); m.receiveShadow = true; world.add(m);
+  addMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }));
 }
-const minor = (c) => /footway|path|cycleway|steps|track|pedestrian/.test(c), service = (c) => /service|living_street/.test(c);
-const roads = scene.roads.filter((r) => r.c !== "steps");
-const major = roads.filter((r) => !minor(r.c)), paths = roads.filter((r) => minor(r.c));
-ribbon(major, (r) => r.w + 1.6, (r) => col(pal.roadCasing), (r) => 0.1 + r.z);
-ribbon(major, (r) => r.w, (r) => col(service(r.c) ? pal.roadService : pal.road), (r) => 0.14 + r.z);
-ribbon(paths, (r) => r.w, (r) => col(pal.path), (r) => 0.12);
-ribbon(scene.aero, (r) => r.w + 3, (r) => col(pal.roadCasing), () => 0.1); ribbon(scene.aero, (r) => r.w, (r) => col(r.c === "runway" ? pal.runway : pal.apron), () => 0.14);
-ribbon(scene.rails, (r) => (r.k === "rail" ? 4.5 : 3.6), (r) => col(r.k === "rail" ? pal.railBed : pal.lightRailBed), (r) => 0.2 + r.z);
-ribbon(scene.rails.flatMap((r) => [{ ...r, s: 1 }, { ...r, s: -1 }]).map((r) => ({ ...r, p: offsetLine(r.p, r.s * (r.k === "rail" ? 0.72 : 0.72)) })), () => 0.35, (r) => col(pal.rail), (r) => 0.24 + r.z);
-function offsetLine(p, d) { const out = []; for (let i = 0; i < p.length; i++) { const a = p[Math.max(0, i - 1)], b = p[Math.min(p.length - 1, i + 1)]; const dx = b[0] - a[0], dn = b[1] - a[1], L = Math.hypot(dx, dn) || 1; out.push([p[i][0] - (dn / L) * d, p[i][1] + (dx / L) * d]); } return out; }
-// bridge decks get a shadow strip under them
-ribbon(roads.filter((r) => r.z > 0), (r) => r.w + 2.5, () => col(pal.bridgeShadow), () => 0.09);
+const offsetLine = (p, d) => p.map((q, i) => { const a = p[Math.max(0, i - 1)], b = p[Math.min(p.length - 1, i + 1)], dx = b[0] - a[0], dn = b[1] - a[1], L = Math.hypot(dx, dn) || 1; return [q[0] + (dn / L) * d, q[1] - (dx / L) * d]; });   // +d = right of travel
 
-// ---- buildings: extruded footprints, colour by hash with glassy towers, with dark edges
+// ---- the road grammar. sidewalk > curb > asphalt > markings, each a hair higher than the last
+const roads = scene.roads.filter((r) => !r.foot), paths = scene.roads.filter((r) => r.foot);
+ribbon(roads.filter((r) => r.sw > 0), (r) => r.w + 2 * r.sw + 0.6, () => col(pal.sidewalk), (r) => 0.1 + r.z);
+ribbon(roads, (r) => r.w + 0.5, () => col(pal.roadCasing), (r) => 0.12 + r.z);
+ribbon(roads, (r) => r.w, (r) => col(r.cls === 9 ? pal.roadService : pal.road), (r) => 0.14 + r.z);
+ribbon(paths, (r) => r.w, () => col(pal.path), () => 0.13);
+// centre line: dashed yellow on two-way streets with more than one lane each way, solid double-ish on arterials
+const twoWay = roads.filter((r) => !r.ow && r.cls <= 7 && r.cls !== 1 && r.cls !== 4);
+ribbon(twoWay.filter((r) => r.lanes >= 4), () => 0.3, () => col(pal.laneYellow), (r) => 0.17 + r.z);
+ribbon(twoWay.filter((r) => r.lanes < 4 && r.cls <= 6), () => 0.25, () => col(pal.laneYellow), (r) => 0.17 + r.z, [3, 6]);
+// lane dividers: white dashes between lanes in the same direction; edge lines on arterials
 {
-  const gs = [], edges = [];
-  const palette = pal.buildings.map(col), tower = col(pal.tower);
+  const divs = [], edgesL = [];
+  for (const r of roads) {
+    if (r.cls === 9 || r.lanes < 2) continue; const laneW = r.w / r.lanes;
+    const per = r.ow ? r.lanes : r.lanes / 2;
+    for (let k = 1; k < per; k++) for (const side of r.ow ? [1] : [1, -1]) { const d = r.ow ? -r.w / 2 + k * laneW : side * k * laneW; divs.push({ ...r, p: offsetLine(r.p, d) }); }
+    if (r.cls <= 6) for (const side of [1, -1]) edgesL.push({ ...r, p: offsetLine(r.p, side * (r.w / 2 - 0.25)) });
+  }
+  ribbon(divs, () => 0.15, () => col(pal.laneWhite), (r) => 0.17 + r.z, [3, 9]);
+  ribbon(edgesL, () => 0.15, () => col(pal.laneWhite), (r) => 0.17 + r.z);
+}
+// crosswalks and stop lines at every signalised node, one per approach
+{
+  const sig = new Set(scene.signals.map((p) => p[0] + "," + p[1])), zebra = [], stops = [];
+  for (const r of roads) if (r.cls <= 8) for (const end of [0, r.p.length - 1]) {
+    const q = r.p[end]; if (!sig.has(q[0] + "," + q[1])) continue;
+    const o = r.p[end === 0 ? 1 : end - 1], L = Math.hypot(o[0] - q[0], o[1] - q[1]); if (L < 8) continue;
+    const ux = (o[0] - q[0]) / L, un = (o[1] - q[1]) / L;   // from the node back along the approach
+    const half = r.w / 2 + Math.max(0, r.sw - 0.4);
+    for (let s = 1.2; s < 1.2 + 3.2; s += 0.8) { const cx = q[0] + ux * s, cn = q[1] + un * s; zebra.push({ p: [[cx - un * half, cn + ux * half], [cx + un * half, cn - ux * half]], z: r.z }); }
+    const sx = q[0] + ux * 5.4, sn = q[1] + un * 5.4, side = r.ow ? [[-r.w / 2, r.w / 2]] : [[0, r.w / 2]];   // stop line across the lanes that approach this node (right-hand side)
+    for (const [a, b] of side) stops.push({ p: [[sx + un * -a, sn - ux * -a], [sx + un * -b, sn - ux * -b]], z: r.z });
+  }
+  ribbon(zebra, () => 0.4, () => col(pal.laneWhite), (r) => 0.18 + r.z);
+  ribbon(stops, () => 0.5, () => col(pal.laneWhite), (r) => 0.18 + r.z);
+}
+ribbon(roads.filter((r) => r.z > 0), (r) => r.w + 2.5, () => col(pal.bridgeShadow), () => 0.09);
+// rail: ballast, two rails, ties, catenary poles for light rail
+ribbon(scene.rails, (r) => (r.k === "rail" ? 4.5 : 3.8), (r) => col(r.k === "rail" ? pal.railBed : pal.lightRailBed), (r) => 0.2 + r.z);
+ribbon(scene.rails.map((r) => ({ ...r, p: r.p })), () => 2.6, () => col(pal.railTie), (r) => 0.22 + r.z, [0.25, 0.65]);
+ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p: offsetLine(r.p, -0.72) }]), () => 0.18, () => col(pal.rail), (r) => 0.26 + r.z);
+{
+  const poles = []; for (const r of scene.rails) if (r.k !== "rail") { let acc = 0; for (let i = 0; i + 1 < r.p.length; i++) { const [ax, an] = r.p[i], [bx, bn] = r.p[i + 1], L = Math.hypot(bx - ax, bn - an); for (let s = 35 - acc; s < L; s += 35) { const ux = (bx - ax) / L, un = (bn - an) / L; poles.push([ax + ux * s + un * 2.4, an + un * s - ux * 2.4]); } acc = (acc + L) % 35; } }
+  const g = new THREE.CylinderGeometry(0.14, 0.16, 7.5, 5); g.translate(0, 3.75, 0); const m = new THREE.InstancedMesh(g, lambert(pal.pole), poles.length); const o = new THREE.Object3D(); poles.forEach(([e, n], i) => { o.position.set(e, 0, -n); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m);
+}
+
+// ---- buildings: extrusions with floor lines, mullions on glass, parapets, rooftop units; ASU buildings in brick tones
+{
+  const gs = [], edges = [], floors = [], units = [];
+  const palette = pal.buildings.map(col), asuPal = pal.asu.map(col), tower = col(pal.tower);
+  const pip = (x, y, r) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  const area = (r) => Math.abs(r.reduce((a, [x, y], i) => { const [x2, y2] = r[(i + 1) % r.length]; return a + x * y2 - x2 * y; }, 0)) / 2;
   for (const b of scene.buildings) {
     try {
-      const sh = toShape(b.o, b.i), depth = Math.max(2.5, b.h - (b.m ?? 0));
-      const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }); g.rotateX(-Math.PI / 2); g.translate(0, (b.m ?? 0) + 0.3, 0);
-      const kind = /house|detached|residential|apartments|dormitory|bungalow|terrace/.test(b.k) ? "warm" : /office|commercial|retail|hotel|university|college|hospital|school|public|civic|government/.test(b.k) ? "cool" : "any";
-      const pool = kind === "warm" ? palette.slice(0, 4) : kind === "cool" ? palette.slice(3) : palette;
-      const c = b.h > 45 ? tower : pool[Math.floor(hash(b.o[0][0] + "," + b.o[0][1]) * pool.length)];
-      const n = g.attributes.position.count, cols = new Float32Array(n * 3);
-      const nrm = g.attributes.normal;
-      for (let i = 0; i < n; i++) { const up = nrm.getY(i) > 0.5; const k = up ? 1.06 : 1; cols[i * 3] = Math.min(1, c.r * k); cols[i * 3 + 1] = Math.min(1, c.g * k); cols[i * 3 + 2] = Math.min(1, c.b * k); }
-      g.setAttribute("color", new THREE.BufferAttribute(cols, 3)); gs.push(g);
-      edges.push(new THREE.EdgesGeometry(g, 20));
-    } catch (e) { window.__fail = (window.__fail || 0) + 1; if (!window.__failMsg) window.__failMsg = String(e && e.message) + " @ " + JSON.stringify(b.o[0]); }
+      const sh = toShape(b.o, b.i), base = b.m ?? 0, depth = Math.max(2.5, b.h - base), top = base + depth + 0.3;
+      const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }); g.rotateX(-Math.PI / 2); g.translate(0, base + 0.3, 0);
+      const glass = b.h > 40 || /glass/.test(b.c ?? ""), kind = /house|detached|residential|apartments|dormitory|bungalow|terrace/.test(b.k) ? "warm" : /office|commercial|retail|hotel|university|college|hospital|school|public|civic|government/.test(b.k) ? "cool" : "any";
+      const pool = b.u ? asuPal : kind === "warm" ? palette.slice(0, 4) : kind === "cool" ? palette.slice(3) : palette;
+      const c = b.c && /^#?[0-9a-f]{6}$/i.test(b.c) ? col(b.c.startsWith("#") ? b.c : "#" + b.c) : glass ? tower : pool[Math.floor(hash(b.o[0][0] + "," + b.o[0][1]) * pool.length)];
+      const n = g.attributes.position.count, cols = new Float32Array(n * 3), nrm = g.attributes.normal;
+      for (let i = 0; i < n; i++) { const up = nrm.getY(i) > 0.5, k = up ? 1.07 : 1; cols[i * 3] = Math.min(1, c.r * k); cols[i * 3 + 1] = Math.min(1, c.g * k); cols[i * 3 + 2] = Math.min(1, c.b * k); }
+      g.setAttribute("color", new THREE.BufferAttribute(cols, 3)); gs.push(g); edges.push(new THREE.EdgesGeometry(g, 20));
+      // floor lines on façades (every storey), mullions on glass
+      if (depth >= 7) { const o = b.o; for (let f = base + 3.4; f < top - 1.5; f += 3.4) for (let i = 0; i + 1 < o.length; i++) floors.push(o[i][0], f, -o[i][1], o[i + 1][0], f, -o[i + 1][1]); }
+      if (glass) { const o = b.o; for (let i = 0; i + 1 < o.length; i++) { const [ax, an] = o[i], [bx, bn] = o[i + 1], L = Math.hypot(bx - ax, bn - an); for (let s = 2; s < L; s += 4) { const x = ax + ((bx - ax) * s) / L, z = an + ((bn - an) * s) / L; floors.push(x, base + 0.3, -z, x, top, -z); } } }
+      // rooftop units: boxes scattered inside large flat roofs
+      const A = area(b.o); if (A > 250 && !b.i && b.r !== "gabled" && b.r !== "hipped") {
+        const xs = b.o.map((p) => p[0]), ys = b.o.map((p) => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+        const want = Math.min(14, Math.round(A / 450) + 1); let tries = 0, seed = hash(x0 + y0);
+        for (let k = 0; k < want && tries < 60; tries++) { seed = (seed * 9301 + 49297) % 233280; const x = x0 + (seed / 233280) * (x1 - x0); seed = (seed * 9301 + 49297) % 233280; const y = y0 + (seed / 233280) * (y1 - y0);
+          if (pip(x, y, b.o) && pip(x + 2, y + 2, b.o) && pip(x - 2, y - 2, b.o)) { units.push({ x, y, top, s: 1.2 + (seed % 7) / 4, hc: c }); k++; } }
+      }
+    } catch (e) { window.__fail = (window.__fail || 0) + 1; }
   }
   window.__built = gs.length;
-  const merged = BGU.mergeGeometries(gs, false);
-  const bm = new THREE.Mesh(merged, new THREE.MeshLambertMaterial({ vertexColors: true })); bm.castShadow = bm.receiveShadow = true; world.add(bm);
-  world.add(new THREE.LineSegments(BGU.mergeGeometries(edges, false), new THREE.LineBasicMaterial({ color: col(pal.edge), transparent: true, opacity: 0.55 })));
+  addMesh(BGU.mergeGeometries(gs, false), new THREE.MeshLambertMaterial({ vertexColors: true }), { cast: true });
+  world.add(new THREE.LineSegments(BGU.mergeGeometries(edges, false), new THREE.LineBasicMaterial({ color: col(pal.edge), transparent: true, opacity: 0.6 })));
+  if (floors.length) { const fg = new THREE.BufferGeometry(); fg.setAttribute("position", new THREE.Float32BufferAttribute(floors, 3)); world.add(new THREE.LineSegments(fg, new THREE.LineBasicMaterial({ color: col(pal.edge), transparent: true, opacity: 0.22 }))); }
+  if (units.length) { const ug = new THREE.BoxGeometry(1, 1, 1); ug.translate(0, 0.5, 0); const m = new THREE.InstancedMesh(ug, lambert(pal.hvac), units.length); const o = new THREE.Object3D(); units.forEach((u, i) => { o.position.set(u.x, u.top, -u.y); o.scale.set(u.s * 1.6, u.s * 0.9, u.s * 1.2); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m); }
 }
-// ---- trees: a cone of foliage on a stub trunk
+// ---- trees: palms (tall trunk, radial fronds) and round desert canopies
 {
-  const fol = new THREE.ConeGeometry(2.6, 5.5, 7); fol.translate(0, 5.2, 0); const trunk = new THREE.CylinderGeometry(0.35, 0.45, 2.6, 5); trunk.translate(0, 1.3, 0);
-  const mk = (g, c) => { const m = new THREE.InstancedMesh(g, new THREE.MeshLambertMaterial({ color: col(c) }), scene.trees.length); m.castShadow = true; const o = new THREE.Object3D(); scene.trees.forEach(([e, n], i) => { o.position.set(e, 0, -n); const s = 0.75 + hash(e + n) * 0.6; o.scale.set(s, s, s); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); return m; };
-  world.add(mk(fol, pal.tree), mk(trunk, pal.trunk));
+  const palms = scene.trees.filter(([e, n]) => hash(e * 3 + n) < 0.4), canopies = scene.trees.filter(([e, n]) => hash(e * 3 + n) >= 0.4);
+  const inst = (geom, color, pts, place) => { if (!pts.length) return; const m = new THREE.InstancedMesh(geom, lambert(color), pts.length); const o = new THREE.Object3D(); pts.forEach((p, i) => { place(o, p); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m); };
+  const trunk = new THREE.CylinderGeometry(0.22, 0.3, 1, 6); trunk.translate(0, 0.5, 0);
+  const fronds = []; for (let k = 0; k < 9; k++) { const f = new THREE.PlaneGeometry(0.9, 3.4); f.translate(0, 1.7, 0); f.rotateX(-0.95); f.rotateY((k / 9) * Math.PI * 2); fronds.push(f); } const crown = BGU.mergeGeometries(fronds, false);
+  inst(trunk, pal.trunk, palms, (o, [e, n]) => { const h = 7 + hash(e + n) * 6; o.position.set(e, 0, -n); o.scale.set(1, h, 1); o.rotation.set(0, 0, 0); });
+  inst(crown, pal.palm, palms, (o, [e, n]) => { const h = 7 + hash(e + n) * 6; o.position.set(e, h, -n); o.scale.set(1, 1, 1); o.rotation.set(0, hash(n) * 6, 0); });
+  const canopy = new THREE.IcosahedronGeometry(2.4, 1); canopy.scale(1, 0.72, 1); canopy.translate(0, 3.6, 0); const ctrunk = new THREE.CylinderGeometry(0.2, 0.28, 2.6, 5); ctrunk.translate(0, 1.3, 0);
+  inst(ctrunk, pal.trunk, canopies, (o, [e, n]) => { o.position.set(e, 0, -n); o.scale.set(1, 1, 1); o.rotation.set(0, 0, 0); });
+  inst(canopy, pal.tree, canopies, (o, [e, n]) => { const s = 0.7 + hash(e - n) * 0.7; o.position.set(e, 0, -n); o.scale.set(s, s, s); o.rotation.set(0, hash(e) * 6, 0); });
+  world.children.filter((c) => c.isInstancedMesh && c.material.color.equals(col(pal.palm))).forEach((m) => (m.material.side = THREE.DoubleSide));
 }
-// ---- traffic signals: small dark posts with a lamp
+// ---- traffic signals and bus stops
 {
-  const g = new THREE.CylinderGeometry(0.25, 0.25, 6, 5); g.translate(0, 3, 0); const lamp = new THREE.BoxGeometry(0.9, 1.6, 0.9); lamp.translate(0, 6.3, 0);
-  for (const [geom, c] of [[g, pal.pole], [lamp, pal.lamp]]) { const m = new THREE.InstancedMesh(geom, new THREE.MeshLambertMaterial({ color: col(c) }), scene.signals.length); const o = new THREE.Object3D(); scene.signals.forEach(([e, n], i) => { o.position.set(e, 0, -n); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); world.add(m); }
+  const g = new THREE.CylinderGeometry(0.12, 0.14, 6, 5); g.translate(0, 3, 0); const lamp = new THREE.BoxGeometry(0.5, 1.3, 0.5); lamp.translate(0, 6.1, 0);
+  for (const [geom, c] of [[g, pal.pole], [lamp, pal.lamp]]) { const m = new THREE.InstancedMesh(geom, lambert(c), scene.signals.length); const o = new THREE.Object3D(); scene.signals.forEach(([e, n], i) => { o.position.set(e, 0, -n); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); world.add(m); }
+  const shelter = new THREE.BoxGeometry(3.2, 0.15, 1.6); shelter.translate(0, 2.6, 0); const bus = scene.stops.filter((s) => s.k === "bus");
+  const m = new THREE.InstancedMesh(shelter, lambert(pal.shelter), bus.length); const o = new THREE.Object3D(); bus.forEach((s, i) => { o.position.set(s.p[0], 0, -s.p[1]); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m);
 }
 
-// ---- rendering a window of the big map. (px, py) is the top-left pixel; returns colour PNG + linear depth grid.
+// ---- render a window of the big map: colour PNG + linear depth block
 const depthRT = new THREE.WebGLRenderTarget(CHUNK / DEPTH_DIV, CHUNK / DEPTH_DIV, { type: THREE.UnsignedByteType });
 const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
 const pix = new Uint8Array((CHUNK / DEPTH_DIV) ** 2 * 4);
 window.renderChunk = (px, py, w = CHUNK, h = CHUNK) => {
   const l = geo.x0 + px * geo.mpp, t = geo.y1 - py * geo.mpp;
   camera.left = l; camera.right = l + w * geo.mpp; camera.top = t; camera.bottom = t - h * geo.mpp; camera.updateProjectionMatrix();
-  // the sun's shadow camera follows the window: centre on the ground under the middle of this chunk
   const ce = l + (w * geo.mpp) / 2, cn = (t - (h * geo.mpp) / 2) / S, R = Math.max(w, h) * geo.mpp * 0.95;
   sun.target.position.set(ce, 0, -cn); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 3000);
   Object.assign(sun.shadow.camera, { left: -R, right: R, top: R, bottom: -R, near: 1000, far: 5000 }); sun.shadow.camera.updateProjectionMatrix(); sun.target.updateMatrixWorld(); sun.updateMatrixWorld();
@@ -134,9 +181,8 @@ window.renderChunk = (px, py, w = CHUNK, h = CHUNK) => {
   renderer.setRenderTarget(depthRT); renderer.setClearColor(0xffffff, 1); renderer.render(world, camera);
   renderer.readRenderTargetPixels(depthRT, 0, 0, CHUNK / DEPTH_DIV, CHUNK / DEPTH_DIV, pix);
   world.overrideMaterial = null; world.background = bg; renderer.setRenderTarget(null);
-  // unpack RGBA depth -> metres along the view ray from the camera (orthographic, so linear in near..far); flip rows (GL is bottom-up)
   const n = CHUNK / DEPTH_DIV, out = new Float32Array(n * n);
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const i = ((n - 1 - y) * n + x) * 4; const d = (pix[i] / 255 + pix[i + 1] / 65025 + pix[i + 2] / 16581375 + pix[i + 3] / 4228250625) * (255 / 256); out[y * n + x] = camera.near + d * (camera.far - camera.near); }   // three.js packs with UnpackDownscale 255/256
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const i = ((n - 1 - y) * n + x) * 4; const d = (pix[i] / 255 + pix[i + 1] / 65025 + pix[i + 2] / 16581375 + pix[i + 3] / 4228250625) * (255 / 256); out[y * n + x] = camera.near + d * (camera.far - camera.near); }
   const u8 = new Uint8Array(out.buffer); let bin = ""; for (let i = 0; i < u8.length; i += 8192) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
   return { png, depth: btoa(bin) };
 };
