@@ -72,7 +72,8 @@ window.Traffic = (() => {
       const e = c.e, A = nodes[e.a], laneW = e.oneway ? e.w / e.lanes : e.w / 2 / e.lanes, off = e.oneway ? -e.w / 2 + (c.lane + 0.5) * laneW : (c.lane + 0.5) * laneW;
       const re = e.un, rn = -e.ux;   // right-hand normal
       const pe = A.e + e.ux * c.s + re * off, pn = A.n + e.un * c.s + rn * off;
-      const p = G.enToPixel(pe, pn, 0.8 + e.z), [sx, sy] = view.toScreen(p.x, p.y);
+      const p = G.enToPixel(pe, pn, 0.8 + e.z); if (p.x < 0 || p.y < 0 || p.x > view.imgW || p.y > view.imgH) continue;   // off the picture
+      const [sx, sy] = view.toScreen(p.x, p.y);
       if (sx < -20 || sy < -20 || sx > view.W + 20 || sy > view.H + 20) continue;
       if (G.hidden(p, 1.2)) continue;
       const h = G.heading((Math.atan2(e.ux, e.un) * 180) / Math.PI), ang = Math.atan2(h[1], h[0]);

@@ -10,6 +10,7 @@ window.Layers = (() => {
       view.scale = (viewer.viewport.getZoom(true) * viewer.viewport.getContainerSize().x) / item.getContentSize().x;
       const tl = viewer.viewport.imageToViewerElementCoordinates(new OpenSeadragon.Point(0, 0));
       view.toScreen = (x, y) => [tl.x + x * view.scale, tl.y + y * view.scale];
+      const cs = item.getContentSize(); view.imgW = cs.x; view.imgH = cs.y;
       view.now = now; view.pxPerM = view.scale / (view.mpp || 0.5);   // screen pixels per metre of ground
       for (const l of layers) if (!l.enabled || l.enabled()) { ctx.save(); try { l.draw(ctx, view); } catch (e) { console.warn(l.name, e); } ctx.restore(); }
     }

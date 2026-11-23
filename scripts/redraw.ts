@@ -7,7 +7,7 @@ import { CHUNK, DIRS } from "../config";
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 
 const geo = JSON.parse(await Bun.file(`${DIRS.data}/geo.json`).text());
-const PROVIDER = process.env.REDRAW_PROVIDER || "mock", WIN = 1024, PAD = 96, only = process.argv[2];
+const PROVIDER = process.env.REDRAW_PROVIDER || "mock", WIN = 1024, PAD = Number(process.env.PAD || 160), only = process.argv[2];
 const UP = Number(process.env.UPSCALE || 1);
 const WINDOWS = process.env.WINDOWS ? new Set(process.env.WINDOWS.split(";")) : null;   // "5,3;6,3" redraws just those 1024-px windows
 const QUALITY = process.env.OPENAI_IMAGE_QUALITY || "high";   // 2 = ask the model for a 2x window and build 2x chunks (map gets twice the pixels)
@@ -23,12 +23,16 @@ glass curtain walls with sky reflections, rooftop ducts and HVAC units, parapets
 cars in parking stalls, striped asphalt, concrete sidewalks with curbs, desert landscaping, palm and palo verde trees with soft
 shadows. Mill Avenue itself: red brick-paver sidewalks, mature street trees and palms in tree wells, ornamental black lampposts,
 restaurant patios with umbrellas, streetcar tracks set in the asphalt. Warm Arizona afternoon light, long soft shadows. Output the same framing.` + (REF ? `
-The second image is a finished window of the same map: match its palette, line weight, paper tone, tree style and shading
-EXACTLY so the two tile together seamlessly.` : "");
+The second image is a finished window of the same map and is a STYLE REFERENCE ONLY: match its palette, line weight,
+paper tone, tree style and shading exactly so the two tile together seamlessly, but draw ONLY the buildings present in the
+first image; never copy buildings, towers or landmarks from the reference.` : "");
 
 // verified building notes whose roof centre falls inside a window, for the prompt
 const sceneB = (JSON.parse(await Bun.file(`${DIRS.data}/scene.json`).text()).buildings as any[]).filter((b) => b.notes);
 const dot3 = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const allB = (JSON.parse(await Bun.file(`${DIRS.data}/scene.json`).text()).buildings as any[]);
+const roofPx = (b: any) => { const c = b.o.reduce((a: number[], p: number[]) => [a[0] + p[0] / b.o.length, a[1] + p[1] / b.o.length], [0, 0]); const w = [c[0], b.h, -c[1]]; return [(dot3(geo.cam.right, w) - geo.x0) / geo.mpp, (geo.y1 - dot3(geo.cam.up, w)) / geo.mpp]; };
+const buildingsIn = (px: number, py: number, size: number) => allB.filter((b) => { const [x, y] = roofPx(b); return x >= px && x < px + size && y >= py && y < py + size; }).length;
 const factsFor = (px: number, py: number, size: number) => sceneB.filter((b) => { const c = b.o.reduce((a: number[], p: number[]) => [a[0] + p[0] / b.o.length, a[1] + p[1] / b.o.length], [0, 0]); const w = [c[0], b.h, -c[1]];
   const x = (dot3(geo.cam.right, w) - geo.x0) / geo.mpp, y = (geo.y1 - dot3(geo.cam.up, w)) / geo.mpp; return x >= px && x < px + size && y >= py && y < py + size; }).map((b) => `- ${b.n}: ${b.notes}`).join("\n");
 
@@ -104,10 +108,11 @@ const jobs: Job[] = [];
 for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++) {
   const cx = Math.floor((wx * WIN) / CHUNK), cy = Math.floor((wy * WIN) / CHUNK); if (only && only !== `${cx},${cy}`) continue;
   if (WINDOWS && !WINDOWS.has(`${wx},${wy}`)) continue;
-  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `${DIRS.out}/redraw-cache/${UP > 1 ? "x" + UP + "-" : ""}${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") + "-" + QUALITY : ""}_${wx}_${wy}.png`;
+  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `${DIRS.out}/redraw-cache/${process.env.PASS ? process.env.PASS + "-" : ""}${PAD !== 96 ? "p" + PAD + "-" : ""}${UP > 1 ? "x" + UP + "-" : ""}${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") + "-" + QUALITY : ""}_${wx}_${wy}.png`;
   jobs.push({ wx, wy, px, py, size, cache });
 }
 async function runJob(j: Job): Promise<Buffer | null> {
+  if (buildingsIn(j.px, j.py, j.size) < 2) { console.log(`  window ${j.wx},${j.wy}: no buildings, kept as plain render`); return null; }
   if (existsSync(j.cache)) return Buffer.from(await Bun.file(j.cache).arrayBuffer());
   const src = await window_(j.px, j.py, j.size, j.size);
   const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) return null;   // plain ground: skip
