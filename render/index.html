@@ -126,7 +126,8 @@ ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p
       const pool = b.u ? asuPal : kind === "warm" ? palette.slice(0, 4) : kind === "cool" ? palette.slice(3) : palette;
       const c = b.c && /^#?[0-9a-f]{6}$/i.test(b.c) ? col(b.c.startsWith("#") ? b.c : "#" + b.c) : glass ? tower : pool[Math.floor(hash(b.o[0][0] + "," + b.o[0][1]) * pool.length)];
       const n = g.attributes.position.count, cols = new Float32Array(n * 3), nrm = g.attributes.normal;
-      for (let i = 0; i < n; i++) { const up = nrm.getY(i) > 0.5, k = up ? 1.07 : 1; cols[i * 3] = Math.min(1, c.r * k); cols[i * 3 + 1] = Math.min(1, c.g * k); cols[i * 3 + 2] = Math.min(1, c.b * k); }
+      const roofTone = hash(b.o[0][1] + "r"); const roof = roofTone < 0.45 ? col("#e9e4d8") : roofTone < 0.8 ? col("#d9d3c6") : c.clone().multiplyScalar(1.07);   // white membrane, grey gravel, or self-coloured
+      for (let i = 0; i < n; i++) { const up = nrm.getY(i) > 0.5, cc = up ? roof : c; cols[i * 3] = Math.min(1, cc.r); cols[i * 3 + 1] = Math.min(1, cc.g); cols[i * 3 + 2] = Math.min(1, cc.b); }
       g.setAttribute("color", new THREE.BufferAttribute(cols, 3)); gs.push(g); edges.push(new THREE.EdgesGeometry(g, 20));
       // floor lines on façades (every storey), mullions on glass
       if (depth >= 7) { const o = b.o; for (let f = base + 3.4; f < top - 1.5; f += 3.4) for (let i = 0; i + 1 < o.length; i++) floors.push(o[i][0], f, -o[i][1], o[i + 1][0], f, -o[i + 1][1]); }
@@ -134,9 +135,9 @@ ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p
       // rooftop units: boxes scattered inside large flat roofs
       const A = area(b.o); if (A > 250 && !b.i && b.r !== "gabled" && b.r !== "hipped") {
         const xs = b.o.map((p) => p[0]), ys = b.o.map((p) => p[1]), x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
-        const want = Math.min(14, Math.round(A / 450) + 1); let tries = 0, seed = hash(x0 + y0);
+        const want = Math.min(6, Math.round(A / 900) + 1); let tries = 0, seed = hash(x0 + y0);
         for (let k = 0; k < want && tries < 60; tries++) { seed = (seed * 9301 + 49297) % 233280; const x = x0 + (seed / 233280) * (x1 - x0); seed = (seed * 9301 + 49297) % 233280; const y = y0 + (seed / 233280) * (y1 - y0);
-          if (pip(x, y, b.o) && pip(x + 2, y + 2, b.o) && pip(x - 2, y - 2, b.o)) { units.push({ x, y, top, s: 1.2 + (seed % 7) / 4, hc: c }); k++; } }
+          if (pip(x, y, b.o) && pip(x + 2, y + 2, b.o) && pip(x - 2, y - 2, b.o)) { units.push({ x, y, top, s: 1.8 + (seed % 7) / 3, hc: c }); k++; } }
       }
     } catch (e) { window.__fail = (window.__fail || 0) + 1; }
   }

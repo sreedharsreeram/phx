@@ -83,6 +83,29 @@ if (await Bun.file(ovPath).exists()) {
     console.log(`override ${o.match.name ?? o.match.at}: ${hits.length} building(s)`);
   }
 }
+// street trees: OSM has almost no trees mapped downtown, so plant them along sidewalks (both sides, every ~11 m on
+// major streets, ~16 m on residential), skipping spots that already have a mapped tree or fall inside a building
+{
+  const pip = (x: number, y: number, r: Pt[]) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  const cell = 25, grid = new Map<string, Pt[]>(); const key = (x: number, y: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
+  const put = (p: Pt) => { const k = key(p[0], p[1]); (grid.get(k) ?? grid.set(k, []).get(k)!).push(p); };
+  const near = (x: number, y: number, d: number) => { for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const q of grid.get(`${Math.floor(x / cell) + i},${Math.floor(y / cell) + j}`) ?? []) if (Math.hypot(q[0] - x, q[1] - y) < d) return true; return false; };
+  for (const t of scene.trees) put(t);
+  const bgrid = new Map<string, any[]>(); for (const b of scene.buildings) { const xs = b.o.map((p: Pt) => p[0]), ys = b.o.map((p: Pt) => p[1]); b.bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; for (let x = Math.floor(b.bb[0] / 50); x <= Math.floor(b.bb[2] / 50); x++) for (let y = Math.floor(b.bb[1] / 50); y <= Math.floor(b.bb[3] / 50); y++) (bgrid.get(`${x},${y}`) ?? bgrid.set(`${x},${y}`, []).get(`${x},${y}`)!).push(b); }
+  const inBuilding = (x: number, y: number) => (bgrid.get(`${Math.floor(x / 50)},${Math.floor(y / 50)}`) ?? []).some((b) => x > b.bb[0] - 1 && x < b.bb[2] + 1 && y > b.bb[1] - 1 && y < b.bb[3] + 1 && pip(x, y, b.o));
+  let planted = 0;
+  for (const r of scene.roads) {
+    if (r.foot || r.sw <= 0 || r.cls <= 2) continue;
+    const step = r.cls <= 6 ? 11 : 16, off = r.w / 2 + r.sw * 0.55; let acc = step / 2;
+    for (let i = 0; i + 1 < r.p.length; i++) {
+      const [ax, an] = r.p[i], [bx, bn] = r.p[i + 1], L = Math.hypot(bx - ax, bn - an); if (L < 0.5) continue; const ux = (bx - ax) / L, un = (bn - an) / L;
+      for (let d = acc; d < L; d += step) for (const side of [1, -1]) { const x = ax + ux * d + un * off * side, y = an + un * d - ux * off * side; if (near(x, y, 7) || inBuilding(x, y)) continue; const p: Pt = [+x.toFixed(1), +y.toFixed(1)]; scene.trees.push(p); put(p); planted++; }
+      acc = (acc + Math.ceil((L - acc) / step) * step) - L;
+    }
+  }
+  for (const b of scene.buildings) delete b.bb;
+  console.log(`street trees planted: ${planted}`);
+}
 await Bun.write(`${DIRS.data}/scene.json`, JSON.stringify(scene));
 console.log(Object.fromEntries(Object.entries(scene).map(([k, v]) => [k, v.length])), `${(JSON.stringify(scene).length / 1e6).toFixed(1)} MB`);
 

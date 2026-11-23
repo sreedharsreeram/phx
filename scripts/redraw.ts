@@ -111,20 +111,82 @@ for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++
   const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `${DIRS.out}/redraw-cache/${process.env.PASS ? process.env.PASS + "-" : ""}${PAD !== 96 ? "p" + PAD + "-" : ""}${UP > 1 ? "x" + UP + "-" : ""}${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") + "-" + QUALITY : ""}_${wx}_${wy}.png`;
   jobs.push({ wx, wy, px, py, size, cache });
 }
+const FRAME = 6;   // px of neutral border the model is asked to keep; anchors the framing
+async function edgeMap(png: Buffer, w: number, crop: number) {
+  // edges of the inner region only (the frame and the window border would otherwise dominate the match)
+  const { data } = await sharp(png).greyscale().resize(w, w, { fit: "fill" }).raw().toBuffer({ resolveWithObject: true });
+  const e = new Float32Array(w * w); for (let y = crop; y < w - crop; y++) for (let x = crop; x < w - crop; x++) { const i = y * w + x; e[i] = Math.abs(data[i + 1] - data[i - 1]) + Math.abs(data[i + w] - data[i - w]); }
+  return e;
+}
+// zero-mean normalised cross-correlation of two edge maps, b shifted by (dx, dy)
+function ncc(a: Float32Array, b: Float32Array, w: number, dx: number, dy: number, crop: number) {
+  let sa = 0, sb = 0, n = 0; const xs: number[] = [];
+  for (let y = crop + Math.max(0, -dy); y < w - crop - Math.max(0, dy); y += 2) for (let x = crop + Math.max(0, -dx); x < w - crop - Math.max(0, dx); x += 2) { const i = y * w + x, j = (y + dy) * w + x + dx; sa += a[i]; sb += b[j]; n++; }
+  if (n < 100) return -1; const ma = sa / n, mb = sb / n; let num = 0, da = 0, db = 0;
+  for (let y = crop + Math.max(0, -dy); y < w - crop - Math.max(0, dy); y += 2) for (let x = crop + Math.max(0, -dx); x < w - crop - Math.max(0, dx); x += 2) { const i = y * w + x, j = (y + dy) * w + x + dx, p = a[i] - ma, q = b[j] - mb; num += p * q; da += p * p; db += q * q; }
+  return num / Math.sqrt(da * db || 1);
+}
+// the output rescaled about its centre to the source size
+const rescaled = async (out: Buffer, size: number, sc: number) => { if (sc === 1) return out; const ss = Math.round(size * sc), off = Math.round((ss - size) / 2); const big = await sharp(out).resize(ss, ss).extend({ top: 300, bottom: 300, left: 300, right: 300, background: "#eee5d6" }).png().toBuffer(); return sharp(big).extract({ left: 300 + off, top: 300 + off, width: size, height: size }).png().toBuffer(); };
+// how far (dx, dy, scale) the output drifted from the source; identity wins unless a candidate is clearly better
+async function registration(src: Buffer, out: Buffer, size: number) {
+  const W1 = 168, W2 = 336, crop1 = Math.round((W1 * 48) / size), crop2 = Math.round((W2 * 48) / size);
+  const A1 = await edgeMap(src, W1, crop1), A2 = await edgeMap(src, W2, crop2);
+  const ident = ncc(A1, await edgeMap(out, W1, crop1), W1, 0, 0, crop1);
+  let best = { dx: 0, dy: 0, sc: 1, v: ident };
+  for (const sc of [0.97, 0.985, 1, 1.015, 1.03]) {
+    const B1 = await edgeMap(await rescaled(out, size, sc), W1, crop1);
+    for (let dy = -8; dy <= 8; dy++) for (let dx = -8; dx <= 8; dx++) { const v = ncc(A1, B1, W1, dx, dy, crop1); if (v > best.v) best = { dx, dy, sc, v }; }
+  }
+  // refine at double resolution around the best
+  const B2 = await edgeMap(await rescaled(out, size, best.sc), W2, crop2); const cx = best.dx * 2, cy = best.dy * 2; let fine = { dx: cx, dy: cy, v: -1 };
+  for (let dy = cy - 3; dy <= cy + 3; dy++) for (let dx = cx - 3; dx <= cx + 3; dx++) { const v = ncc(A2, B2, W2, dx, dy, crop2); if (v > fine.v) fine = { dx, dy, v }; }
+  const gain = best.v - ident;
+  return { dx: (fine.dx * size) / W2, dy: (fine.dy * size) / W2, sc: best.sc, v: best.v, ident, gain };
+}
+async function registered(src: Buffer, out: Buffer, size: number, tag: string) {
+  const r = await registration(src, out, size);
+  if (r.gain < 0.03 || (Math.hypot(r.dx, r.dy) < 3 && r.sc === 1)) { console.log(`  ${tag}: aligned (ncc ${r.ident.toFixed(2)})`); return out; }
+  console.log(`  ${tag}: drift dx=${r.dx.toFixed(0)} dy=${r.dy.toFixed(0)} scale=${r.sc} (ncc ${r.ident.toFixed(2)} -> ${r.v.toFixed(2)}); correcting`);
+  // output content at scale sc sits at (+dx, +dy) relative to the source: rescale about the centre, then shift it back
+  const scaled = await rescaled(out, size, r.sc);
+  const big = await sharp(scaled).extend({ top: 300, bottom: 300, left: 300, right: 300, background: "#eee5d6" }).png().toBuffer();
+  return sharp(big).extract({ left: 300 + Math.round(r.dx), top: 300 + Math.round(r.dy), width: size, height: size }).png().toBuffer();
+}
 async function runJob(j: Job): Promise<Buffer | null> {
-  if (buildingsIn(j.px, j.py, j.size) < 2) { console.log(`  window ${j.wx},${j.wy}: no buildings, kept as plain render`); return null; }
   if (existsSync(j.cache)) return Buffer.from(await Bun.file(j.cache).arrayBuffer());
   const src = await window_(j.px, j.py, j.size, j.size);
   const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) return null;   // plain ground: skip
-  const outSize = j.size * UP, sent = PROVIDER === "bedrock" ? await sharp(src).resize(1024, 1024).png().toBuffer() : src;
+  const outSize = j.size * UP;
+  const framed = await sharp(src).extract({ left: FRAME, top: FRAME, width: j.size - 2 * FRAME, height: j.size - 2 * FRAME }).extend({ top: FRAME, bottom: FRAME, left: FRAME, right: FRAME, background: "#2b2420" }).png().toBuffer();
+  const sent = PROVIDER === "bedrock" ? await sharp(framed).resize(1024, 1024).png().toBuffer() : framed;
   const facts = factsFor(j.px, j.py, j.size); if (facts) console.log(`  facts for window ${j.wx},${j.wy}:\n${facts}`);
   const got = await redraw(sent, outSize, facts);
-  const out = await sharp(got).resize(outSize, outSize, { fit: "fill" }).png().toBuffer();
+  const raw = await sharp(got).resize(outSize, outSize, { fit: "fill" }).png().toBuffer(); await Bun.write(j.cache.replace(/([^/]+)$/, "raw-$1"), raw);
+  // align to the source at render resolution, then drop the frame (fill it from the source so edges feather cleanly)
+  const aligned = await registered(await sharp(src).resize(outSize, outSize).png().toBuffer(), raw, outSize, `window ${j.wx},${j.wy}`);
+  const F = FRAME * UP, inner = await sharp(aligned).extract({ left: F, top: F, width: outSize - 2 * F, height: outSize - 2 * F }).png().toBuffer();
+  const out = await sharp(await sharp(src).resize(outSize, outSize).png().toBuffer()).composite([{ input: inner, left: F, top: F }]).png().toBuffer();
   await Bun.write(j.cache, out); n++; console.log(`  window ${j.wx},${j.wy} done (${n} new, ${((Date.now() - t0) / 1000).toFixed(0)}s)`);
   return out;
 }
 const results = new Map<Job, Buffer | null>();
+async function normaliseTones() {
+  const stats = new Map<Job, { mean: number[]; std: number[] }>();
+  for (const [j, buf] of results) if (buf) { const st = await sharp(buf).stats(); stats.set(j, { mean: st.channels.slice(0, 3).map((c) => c.mean), std: st.channels.slice(0, 3).map((c) => c.stdev) }); }
+  if (stats.size < 3) return;
+  const med = (xs: number[]) => xs.sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  const target = { mean: [0, 1, 2].map((c) => med([...stats.values()].map((s) => s.mean[c]))), std: [0, 1, 2].map((c) => med([...stats.values()].map((s) => s.std[c]))) };
+  for (const [j, st] of stats) {
+    const buf = results.get(j)!; const a = [0, 1, 2].map((c) => Math.min(1.25, Math.max(0.8, target.std[c] / (st.std[c] || 1)))), b = [0, 1, 2].map((c) => (target.mean[c] - st.mean[c] * a[c]) * 0.7);   // pull 70% of the way to the median
+    const chans = await Promise.all([0, 1, 2].map((c) => sharp(buf).extractChannel(c as 0 | 1 | 2).linear(a[c], b[c]).toBuffer()));
+    const meta = await sharp(buf).metadata();
+    results.set(j, await sharp(chans[0], { raw: { width: meta.width!, height: meta.height!, channels: 1 } }).joinChannel([chans[1], chans[2]], { raw: { width: meta.width!, height: meta.height!, channels: 1 } }).png().toBuffer());
+  }
+  console.log(`tone-normalised ${stats.size} windows toward the median`);
+}
 for (let i = 0; i < jobs.length; i += POOL) await Promise.all(jobs.slice(i, i + POOL).map(async (j) => { try { results.set(j, await runJob(j)); } catch (e) { console.log(`  window ${j.wx},${j.wy} FAILED: ${String(e).slice(0, 200)}`); results.set(j, null); } }));
+if (!process.env.NO_TONE) await normaliseTones();
 for (const j of jobs) {
   const out = results.get(j); if (!out) continue;
   const masked = await sharp(out).ensureAlpha().joinChannel(mask, { raw: undefined }).removeAlpha().joinChannel(mask).png().toBuffer();
