@@ -1,0 +1,31 @@
+{
+  "name": "smallphx",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/three": "^0.187.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "csv-parse": "^7.0.3",
+    "gtfs-realtime-bindings": "^3.0.0",
+    "puppeteer": "^25.18.1",
+    "sharp": "^0.35.5",
+    "three": "^0.187.0"
+  },
+  "scripts": {
+    "data:osm": "osmium extract -b -112.09,33.405,-111.90,33.465 -s smart --overwrite data/arizona-latest.osm.pbf -o out/phx.osm.pbf && osmium tags-filter --overwrite out/phx.osm.pbf building highway railway natural=water,tree waterway leisure landuse aeroway amenity=parking -o out/phx-f.osm.pbf && osmium export --overwrite out/phx-f.osm.pbf -f geojson --geometry-types=point,linestring,polygon -o data/osm.geojson",
+    "data:scene": "bun run scripts/geo.ts && bun run scripts/prep-scene.ts",
+    "data:transit": "bun run scripts/build-transit.ts",
+    "render": "bun run render/render.ts",
+    "tile": "bun run scripts/tile.ts",
+    "build": "bun run data:scene && bun run data:transit && bun run render && bun run tile",
+    "dev": "bun --watch server.ts",
+    "start": "bun server.ts"
+  }
+}

@@ -1,0 +1,9 @@
+node_modules
+out/
+data/osm.geojson
+data/scene.json
+public/tiles/
+public/depth.bin
+public/geo.json
+public/map.json
+.DS_Store

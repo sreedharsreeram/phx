@@ -1,0 +1,57 @@
+{
+ "center": {
+  "lat": 33.435,
+  "lon": -111.995
+ },
+ "mPerDegLat": 111319.49079327357,
+ "mPerDegLon": 92897.38833615246,
+ "pitch": 45,
+ "mpp": 0.5,
+ "x0": -8825.251891934378,
+ "y1": 2524.077564217711,
+ "W": 36864,
+ "H": 10240,
+ "extent": {
+  "e0": -8825.251891934378,
+  "e1": 8825.251891934378,
+  "n0": -3339.5847237983335,
+  "n1": 3339.5847237983335
+ },
+ "depthGrid": {
+  "cell": 4,
+  "w": 9216,
+  "h": 2560
+ },
+ "palette": {
+  "ground": "#efe7da",
+  "road": "#f7f3ec",
+  "roadService": "#f1ece3",
+  "roadCasing": "#cdc3b4",
+  "path": "#e4dccd",
+  "bridgeShadow": "#d6ccbb",
+  "runway": "#d9d4ca",
+  "apron": "#e3ded4",
+  "parking": "#e6dfd3",
+  "green": "#b8cc95",
+  "stadium": "#a9c48a",
+  "water": "#8fb9d2",
+  "railBed": "#c9c0b1",
+  "lightRailBed": "#cfc5b4",
+  "rail": "#8b8378",
+  "buildings": [
+   "#e7d8c3",
+   "#dfd5c6",
+   "#e4cfbf",
+   "#d9d2cb",
+   "#e9dfd0",
+   "#d8cbbd",
+   "#e2d3c9"
+  ],
+  "tower": "#c9d3dc",
+  "edge": "#5a4e42",
+  "tree": "#7a9e62",
+  "trunk": "#8a6a4d",
+  "pole": "#4d4842",
+  "lamp": "#3a3632"
+ }
+}
