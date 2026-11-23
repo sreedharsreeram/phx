@@ -7,13 +7,14 @@
       return out;
     });
   }
-  function make(geo, depth /* Uint16Array or null */) {
+  function make(geo, depth /* Uint16Array or null */, terrain /* Int16Array or null */) {
+    const TR = geo.terrain, T = TR && terrain ? (e, n) => { const fx = (e - TR.e0) / TR.cellE - 0.5, fy = (TR.n1 - n) / TR.cellN - 0.5, x0 = Math.max(0, Math.min(TR.w - 2, Math.floor(fx))), y0 = Math.max(0, Math.min(TR.h - 2, Math.floor(fy))), tx = Math.min(1, Math.max(0, fx - x0)), ty = Math.min(1, Math.max(0, fy - y0)), i = y0 * TR.w + x0; return ((terrain[i] * (1 - tx) + terrain[i + 1] * tx) * (1 - ty) + (terrain[i + TR.w] * (1 - tx) + terrain[i + TR.w + 1] * tx) * ty) / 10; } : () => 0;
     const th = (geo.pitch * Math.PI) / 180, S0 = Math.sin(th), C0 = Math.cos(th);
     const cam = geo.cam || { dir: [0, -S0, -C0], right: [1, 0, 0], up: [0, C0, -S0], pos: [0, 30000 * S0, 30000 * C0] };   // maps built before the camera basis existed looked due north
     const dg = geo.depthGrid, dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     const toEN = (lat, lon) => [(lon - geo.center.lon) * geo.mPerDegLon, (lat - geo.center.lat) * geo.mPerDegLat];
     // world point (X = east, Y = up, Z = -north) -> map pixel + view depth (metres along the camera ray from the camera)
-    const enToPixel = (e, n, h = 0) => { const p = [e, h, -n]; return { x: (dot(cam.right, p) - geo.x0) / geo.mpp, y: (geo.y1 - dot(cam.up, p)) / geo.mpp, depth: dot(cam.dir, [p[0] - cam.pos[0], p[1] - cam.pos[1], p[2] - cam.pos[2]]) }; };
+    const enToPixel = (e, n, h = 0) => { const p = [e, h + T(e, n), -n]; return { x: (dot(cam.right, p) - geo.x0) / geo.mpp, y: (geo.y1 - dot(cam.up, p)) / geo.mpp, depth: dot(cam.dir, [p[0] - cam.pos[0], p[1] - cam.pos[1], p[2] - cam.pos[2]]) }; };
     function toPixel(lat, lon, h = 0) { const [e, n] = toEN(lat, lon); return enToPixel(e, n, h); }
     // map pixel at ground level -> lat/lon (used for links)
     function pixelToLatLon(px, py) {
@@ -30,7 +31,8 @@
     const hidden = (p, tol = 1.5) => { const d = sceneDepth(p.x, p.y); return d != null && d < p.depth - tol; };
     // screen-space direction of a compass bearing (degrees clockwise from north), unit vector in pixels
     const heading = (deg) => { const r = (deg * Math.PI) / 180, w = [Math.sin(r), 0, -Math.cos(r)], dx = dot(cam.right, w), dy = -dot(cam.up, w), L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; };
-    return { toEN, toPixel, enToPixel, pixelToLatLon, sceneDepth, hidden, heading };
+    return { toEN, toPixel, enToPixel, pixelToLatLon, sceneDepth, hidden, heading, ground: T };
   }
-  root.IsoGeo = { make, load: (geo, base = "/") => undelta(base + "depth.bin", geo.depthGrid.w * geo.depthGrid.h, geo.depthGrid.w) };
+  const gunzip = (url) => fetch(url).then((res) => new Response(res.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer());
+  root.IsoGeo = { make, load: (geo, base = "/") => undelta(base + "depth.bin", geo.depthGrid.w * geo.depthGrid.h, geo.depthGrid.w), loadTerrain: (geo, base = "/") => gunzip(base + "terrain.bin").then((buf) => new Int16Array(buf)) };
 })(window);

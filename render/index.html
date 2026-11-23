@@ -9,6 +9,10 @@ import * as BGU from "three/addons/utils/BufferGeometryUtils.js";
 const P = Object.fromEntries(new URLSearchParams(location.search));
 const CHUNK = +P.chunk || 2048, DEPTH_DIV = +P.depthDiv || 4, DATA = P.data || "/data/tempe";
 const [scene, geo] = await Promise.all([fetch(`${DATA}/scene.json`).then((r) => r.json()), fetch(`${DATA}/geo.json`).then((r) => r.json())]);
+// terrain (scripts/terrain.ts): decimetres above downtown street level on a regular grid; T(e, n) samples it bilinearly, 0 without a grid
+const TER = await fetch(`${DATA}/terrain.json`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+const T = TER ? (e, n) => { const fx = (e - TER.e0) / TER.cellE - 0.5, fy = (TER.n1 - n) / TER.cellN - 0.5, x0 = Math.max(0, Math.min(TER.w - 2, Math.floor(fx))), y0 = Math.max(0, Math.min(TER.h - 2, Math.floor(fy))), tx = Math.min(1, Math.max(0, fx - x0)), ty = Math.min(1, Math.max(0, fy - y0)), z = TER.z, i = y0 * TER.w + x0; return ((z[i] * (1 - tx) + z[i + 1] * tx) * (1 - ty) + (z[i + TER.w] * (1 - tx) + z[i + TER.w + 1] * tx) * ty) / 10; } : () => 0;
+const Tmin = (o) => { let m = Infinity; for (const [e, n] of o) m = Math.min(m, T(e, n)); return m; };
 const th = (geo.pitch * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th), CAM = geo.cam;
 const pal = geo.palette, col = (hex) => new THREE.Color(hex);
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295; };
@@ -32,17 +36,30 @@ const lambert = (c, extra = {}) => new THREE.MeshLambertMaterial({ color: col(c)
 const addMesh = (g, m, { cast = false, receive = true } = {}) => { if (!g) return; const mesh = new THREE.Mesh(g, m); mesh.castShadow = cast; mesh.receiveShadow = receive; world.add(mesh); return mesh; };
 const toShape = (o, holes) => { const sh = new THREE.Shape(o.map(([e, n]) => new THREE.Vector2(e, n))); for (const h of holes ?? []) sh.holes.push(new THREE.Path(h.map(([e, n]) => new THREE.Vector2(e, n)))); return sh; };
 const flat = (items, color, y) => {
-  const gs = []; for (const a of items) { try { const g = new THREE.ShapeGeometry(toShape(a.o, a.i)); g.rotateX(-Math.PI / 2); g.translate(0, y, 0); gs.push(g); } catch {} }
+  const gs = []; for (const a of items) { try { let lo = Infinity, hi = -Infinity; for (const [e, n] of a.o) { const t = T(e, n); lo = Math.min(lo, t); hi = Math.max(hi, t); } if (hi - lo > 1.5) continue;   // on a slope: let the terrain show
+    const g = new THREE.ShapeGeometry(toShape(a.o, a.i)); g.rotateX(-Math.PI / 2); g.translate(0, y + lo, 0); gs.push(g); } catch {} }
   if (gs.length) addMesh(BGU.mergeGeometries(gs, false), lambert(color));
 };
-{ const { e0, e1, n0, n1 } = geo.extent, g = new THREE.PlaneGeometry(e1 - e0 + 4000, n1 - n0 + 4000); g.rotateX(-Math.PI / 2); g.translate((e0 + e1) / 2, -0.5, -(n0 + n1) / 2); addMesh(g, lambert(pal.ground)); }
+{ const { e0, e1, n0, n1 } = geo.extent, g = new THREE.PlaneGeometry(e1 - e0 + 4000, n1 - n0 + 4000); g.rotateX(-Math.PI / 2); g.translate((e0 + e1) / 2, -0.6, -(n0 + n1) / 2); addMesh(g, lambert(pal.ground)); }
+if (TER) {   // heightfield over the terrain grid; ground colour turns to scrub and rock with height and slope
+  const step = 4, W = Math.floor((TER.cellE * TER.w) / step), H = Math.floor((TER.cellN * TER.h) / step);
+  const g = new THREE.PlaneGeometry(W * step, H * step, W, H); g.rotateX(-Math.PI / 2); g.translate(TER.e0 + (W * step) / 2, -0.5, -(TER.n1 - (H * step) / 2));
+  const p = g.attributes.position, cols = new Float32Array(p.count * 3), ground = col(pal.ground), rock = col(pal.rock || "#b08a66"), scrub = col(pal.scrub || "#d8c6a2");
+  for (let i = 0; i < p.count; i++) {
+    const e = p.getX(i), n = -p.getZ(i), t = T(e, n); p.setY(i, -0.5 + t);
+    const slope = Math.hypot(T(e + 4, n) - T(e - 4, n), T(e, n + 4) - T(e, n - 4)) / 8, k = Math.min(1, Math.max(0, (t - 1.5) / 20) * 0.8 + Math.min(1, slope * 2) * 0.7);
+    const c = k < 0.5 ? ground.clone().lerp(scrub, k * 2) : scrub.clone().lerp(rock, (k - 0.5) * 2); cols[i * 3] = c.r; cols[i * 3 + 1] = c.g; cols[i * 3 + 2] = c.b;
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(cols, 3)); g.computeVertexNormals();
+  addMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }), { cast: true });
+}
 const by = (k) => scene.areas.filter((a) => a.k === k);
 flat(by("dirt"), pal.dirt, 0.01); flat(by("parking"), pal.parking, 0.02); flat(by("apron"), pal.apron, 0.03); flat(by("green"), pal.green, 0.05); flat(by("stadium"), pal.stadium, 0.06); flat(by("platform"), pal.platform, 0.3); flat(by("water"), pal.water, 0.08); flat(by("pool"), pal.pool, 0.09);
 
 // ---- ribbons: quads per segment + joint discs, flat normals up. dash(on, off) makes broken lines.
 function ribbon(items, widthOf, colorOf, liftOf, dash) {
   const pos = [], colr = [], idx = []; let vi = 0;
-  const push = (x, y, z, c) => { pos.push(x, y, z); colr.push(c.r, c.g, c.b); return vi++; };
+  const push = (x, y, z, c) => { pos.push(x, y + T(x, -z), z); colr.push(c.r, c.g, c.b); return vi++; };
   const quad = (ax, an, bx, bn, w, y, c) => { const dx = bx - ax, dn = bn - an, L = Math.hypot(dx, dn); if (L < 0.01) return; const nx = (-dn / L) * w, nn = (dx / L) * w;
     const a = push(ax + nx, y, -(an + nn), c), b = push(ax - nx, y, -(an - nn), c), d = push(bx + nx, y, -(bn + nn), c), e = push(bx - nx, y, -(bn - nn), c); idx.push(a, b, d, b, e, d); };
   for (const it of items) {
@@ -109,7 +126,7 @@ ribbon(scene.rails.map((r) => ({ ...r, p: r.p })), () => 2.6, () => col(pal.rail
 ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p: offsetLine(r.p, -0.72) }]), () => 0.18, () => col(pal.rail), (r) => 0.26 + r.z);
 {
   const poles = []; for (const r of scene.rails) if (r.k !== "rail") { let acc = 0; for (let i = 0; i + 1 < r.p.length; i++) { const [ax, an] = r.p[i], [bx, bn] = r.p[i + 1], L = Math.hypot(bx - ax, bn - an); for (let s = 35 - acc; s < L; s += 35) { const ux = (bx - ax) / L, un = (bn - an) / L; poles.push([ax + ux * s + un * 2.4, an + un * s - ux * 2.4]); } acc = (acc + L) % 35; } }
-  const g = new THREE.CylinderGeometry(0.14, 0.16, 7.5, 5); g.translate(0, 3.75, 0); const m = new THREE.InstancedMesh(g, lambert(pal.pole), poles.length); const o = new THREE.Object3D(); poles.forEach(([e, n], i) => { o.position.set(e, 0, -n); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m);
+  const g = new THREE.CylinderGeometry(0.14, 0.16, 7.5, 5); g.translate(0, 3.75, 0); const m = new THREE.InstancedMesh(g, lambert(pal.pole), poles.length); const o = new THREE.Object3D(); poles.forEach(([e, n], i) => { o.position.set(e, T(e, n), -n); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m);
 }
 
 // ---- buildings: extrusions with floor lines, mullions on glass, parapets, rooftop units; ASU buildings in brick tones
@@ -120,7 +137,7 @@ ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p
   const area = (r) => Math.abs(r.reduce((a, [x, y], i) => { const [x2, y2] = r[(i + 1) % r.length]; return a + x * y2 - x2 * y; }, 0)) / 2;
   for (const b of scene.buildings) {
     try {
-      const sh = toShape(b.o, b.i), base = b.m ?? 0, depth = Math.max(2.5, b.h - base), top = base + depth + 0.3;
+      const tz = Tmin(b.o), sh = toShape(b.o, b.i), base = (b.m ?? 0) + tz, depth = Math.max(2.5, b.h - (b.m ?? 0)), top = base + depth + 0.3;
       const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }); g.rotateX(-Math.PI / 2); g.translate(0, base + 0.3, 0);
       const glass = b.g || b.h > 40 || /glass/.test(b.c ?? ""), kind = /house|detached|residential|apartments|dormitory|bungalow|terrace/.test(b.k) ? "warm" : /office|commercial|retail|hotel|university|college|hospital|school|public|civic|government/.test(b.k) ? "cool" : "any";
       const pool = b.u ? asuPal : kind === "warm" ? palette.slice(0, 4) : kind === "cool" ? palette.slice(3) : palette;
@@ -153,19 +170,19 @@ ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p
   const inst = (geom, color, pts, place) => { if (!pts.length) return; const m = new THREE.InstancedMesh(geom, lambert(color), pts.length); const o = new THREE.Object3D(); pts.forEach((p, i) => { place(o, p); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m); };
   const trunk = new THREE.CylinderGeometry(0.22, 0.3, 1, 6); trunk.translate(0, 0.5, 0);
   const fronds = []; for (let k = 0; k < 9; k++) { const f = new THREE.PlaneGeometry(0.9, 3.4); f.translate(0, 1.7, 0); f.rotateX(-0.95); f.rotateY((k / 9) * Math.PI * 2); fronds.push(f); } const crown = BGU.mergeGeometries(fronds, false);
-  inst(trunk, pal.trunk, palms, (o, [e, n]) => { const h = 7 + hash(e + n) * 6; o.position.set(e, 0, -n); o.scale.set(1, h, 1); o.rotation.set(0, 0, 0); });
-  inst(crown, pal.palm, palms, (o, [e, n]) => { const h = 7 + hash(e + n) * 6; o.position.set(e, h, -n); o.scale.set(1, 1, 1); o.rotation.set(0, hash(n) * 6, 0); });
+  inst(trunk, pal.trunk, palms, (o, [e, n]) => { const h = 7 + hash(e + n) * 6; o.position.set(e, T(e, n), -n); o.scale.set(1, h, 1); o.rotation.set(0, 0, 0); });
+  inst(crown, pal.palm, palms, (o, [e, n]) => { const h = 7 + hash(e + n) * 6; o.position.set(e, h + T(e, n), -n); o.scale.set(1, 1, 1); o.rotation.set(0, hash(n) * 6, 0); });
   const canopy = new THREE.IcosahedronGeometry(2.4, 1); canopy.scale(1, 0.72, 1); canopy.translate(0, 3.6, 0); const ctrunk = new THREE.CylinderGeometry(0.2, 0.28, 2.6, 5); ctrunk.translate(0, 1.3, 0);
-  inst(ctrunk, pal.trunk, canopies, (o, [e, n]) => { o.position.set(e, 0, -n); o.scale.set(1, 1, 1); o.rotation.set(0, 0, 0); });
-  inst(canopy, pal.tree, canopies, (o, [e, n]) => { const s = 0.7 + hash(e - n) * 0.7; o.position.set(e, 0, -n); o.scale.set(s, s, s); o.rotation.set(0, hash(e) * 6, 0); });
+  inst(ctrunk, pal.trunk, canopies, (o, [e, n]) => { o.position.set(e, T(e, n), -n); o.scale.set(1, 1, 1); o.rotation.set(0, 0, 0); });
+  inst(canopy, pal.tree, canopies, (o, [e, n]) => { const s = 0.7 + hash(e - n) * 0.7; o.position.set(e, T(e, n), -n); o.scale.set(s, s, s); o.rotation.set(0, hash(e) * 6, 0); });
   world.children.filter((c) => c.isInstancedMesh && c.material.color.equals(col(pal.palm))).forEach((m) => (m.material.side = THREE.DoubleSide));
 }
 // ---- traffic signals and bus stops
 {
   const g = new THREE.CylinderGeometry(0.12, 0.14, 6, 5); g.translate(0, 3, 0); const lamp = new THREE.BoxGeometry(0.5, 1.3, 0.5); lamp.translate(0, 6.1, 0);
-  for (const [geom, c] of [[g, pal.pole], [lamp, pal.lamp]]) { const m = new THREE.InstancedMesh(geom, lambert(c), scene.signals.length); const o = new THREE.Object3D(); scene.signals.forEach(([e, n], i) => { o.position.set(e, 0, -n); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); world.add(m); }
+  for (const [geom, c] of [[g, pal.pole], [lamp, pal.lamp]]) { const m = new THREE.InstancedMesh(geom, lambert(c), scene.signals.length); const o = new THREE.Object3D(); scene.signals.forEach(([e, n], i) => { o.position.set(e, T(e, n), -n); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); world.add(m); }
   const shelter = new THREE.BoxGeometry(3.2, 0.15, 1.6); shelter.translate(0, 2.6, 0); const bus = scene.stops.filter((s) => s.k === "bus");
-  const m = new THREE.InstancedMesh(shelter, lambert(pal.shelter), bus.length); const o = new THREE.Object3D(); bus.forEach((s, i) => { o.position.set(s.p[0], 0, -s.p[1]); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m);
+  const m = new THREE.InstancedMesh(shelter, lambert(pal.shelter), bus.length); const o = new THREE.Object3D(); bus.forEach((s, i) => { o.position.set(s.p[0], T(s.p[0], s.p[1]), -s.p[1]); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; world.add(m);
 }
 
 // ---- render a window of the big map: colour PNG + linear depth block

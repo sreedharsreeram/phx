@@ -76,8 +76,9 @@
     imageLoaderLimit: mobile ? 4 : 8, maxImageCacheCount: mobile ? 60 : 250, preserveImageSizeOnResize: true, minZoomImageRatio: 0.5, constrainDuringPan: true,
   });
   window.viewer = viewer;
-  const G = IsoGeo.make(geo, null);
-  IsoGeo.load(geo, base).then((d) => { window.__depth = d; Object.assign(G, IsoGeo.make(geo, d)); }).catch((e) => console.warn("no depth grid", e));
+  const terrain = geo.terrain ? await IsoGeo.loadTerrain(geo, base).catch((e) => (console.warn("no terrain", e), null)) : null;   // before any layer projects a point
+  const G = IsoGeo.make(geo, null, terrain);
+  IsoGeo.load(geo, base).then((d) => { window.__depth = d; Object.assign(G, IsoGeo.make(geo, d, terrain)); }).catch((e) => console.warn("no depth grid", e));
 
   // start on ASU unless the link says otherwise (#lat,lon,zoom)
   const start = (location.hash.match(/^#(-?[\d.]+),(-?[\d.]+),([\d.]+)/) || []).slice(1).map(Number);
