@@ -68,6 +68,7 @@
   const mapName = new URLSearchParams(location.search).get("map") || "mill", base = `/maps/${mapName}/`;
   const [map, geo] = await Promise.all([fetch(base + "map.json").then((r) => r.json()), fetch(base + "geo.json").then((r) => r.json())]);
   if (geo.title) document.querySelector("h1").textContent = "Small Phoenix · " + geo.title;
+  const terrain = geo.terrain ? await IsoGeo.loadTerrain(geo, base).catch((e) => (console.warn("no terrain", e), null)) : null;   // before the viewer opens and before any layer projects a point
   const mobile = matchMedia("(pointer: coarse)").matches;
   const viewer = OpenSeadragon({
     id: "map", showNavigationControl: false, drawer: mobile ? "canvas" : ["webgl", "canvas"],
@@ -76,7 +77,6 @@
     imageLoaderLimit: mobile ? 4 : 8, maxImageCacheCount: mobile ? 60 : 250, preserveImageSizeOnResize: true, minZoomImageRatio: 0.5, constrainDuringPan: true,
   });
   window.viewer = viewer;
-  const terrain = geo.terrain ? await IsoGeo.loadTerrain(geo, base).catch((e) => (console.warn("no terrain", e), null)) : null;   // before any layer projects a point
   const G = IsoGeo.make(geo, null, terrain);
   IsoGeo.load(geo, base).then((d) => { window.__depth = d; Object.assign(G, IsoGeo.make(geo, d, terrain)); }).catch((e) => console.warn("no depth grid", e));
 
