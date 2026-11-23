@@ -8,7 +8,9 @@
     });
   }
   function make(geo, depth /* Uint16Array or null */) {
-    const dg = geo.depthGrid, cam = geo.cam, dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const th = (geo.pitch * Math.PI) / 180, S0 = Math.sin(th), C0 = Math.cos(th);
+    const cam = geo.cam || { dir: [0, -S0, -C0], right: [1, 0, 0], up: [0, C0, -S0], pos: [0, 30000 * S0, 30000 * C0] };   // maps built before the camera basis existed looked due north
+    const dg = geo.depthGrid, dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     const toEN = (lat, lon) => [(lon - geo.center.lon) * geo.mPerDegLon, (lat - geo.center.lat) * geo.mPerDegLat];
     // world point (X = east, Y = up, Z = -north) -> map pixel + view depth (metres along the camera ray from the camera)
     const enToPixel = (e, n, h = 0) => { const p = [e, h, -n]; return { x: (dot(cam.right, p) - geo.x0) / geo.mpp, y: (geo.y1 - dot(cam.up, p)) / geo.mpp, depth: dot(cam.dir, [p[0] - cam.pos[0], p[1] - cam.pos[1], p[2] - cam.pos[2]]) }; };

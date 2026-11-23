@@ -65,7 +65,7 @@
 <script src="/layers.js"></script><script src="/buildings.js"></script><script src="/transit.js"></script><script src="/planes.js"></script><script src="/traffic.js"></script>
 <script>
 (async () => {
-  const mapName = new URLSearchParams(location.search).get("map") || "tempe", base = `/maps/${mapName}/`;
+  const mapName = new URLSearchParams(location.search).get("map") || "mill", base = `/maps/${mapName}/`;
   const [map, geo] = await Promise.all([fetch(base + "map.json").then((r) => r.json()), fetch(base + "geo.json").then((r) => r.json())]);
   if (geo.title) document.querySelector("h1").textContent = "Small Phoenix · " + geo.title;
   const mobile = matchMedia("(pointer: coarse)").matches;
@@ -85,7 +85,7 @@
     const [lat, lon, z] = start.length ? start : [geo.center.lat, geo.center.lon, 3];
     const p = G.toPixel(lat, lon); viewer.viewport.zoomTo(z, null, true); viewer.viewport.panTo(viewer.viewport.imageToViewportCoordinates(p.x, p.y), true);
   });
-  const linkFor = () => { const q = mapName === "tempe" ? "" : `?map=${mapName}`; const c = viewer.viewport.viewportToImageCoordinates(viewer.viewport.getCenter()); const [lat, lon] = G.pixelToLatLon(c.x, c.y); return `${q}#${lat.toFixed(5)},${lon.toFixed(5)},${viewer.viewport.getZoom().toFixed(2)}`; };
+  const linkFor = () => { const q = mapName === "mill" ? "" : `?map=${mapName}`; const c = viewer.viewport.viewportToImageCoordinates(viewer.viewport.getCenter()); const [lat, lon] = G.pixelToLatLon(c.x, c.y); return `${q}#${lat.toFixed(5)},${lon.toFixed(5)},${viewer.viewport.getZoom().toFixed(2)}`; };
   viewer.addHandler("animation-finish", () => history.replaceState(null, "", linkFor()));
   document.getElementById("btn-share").onclick = async (ev) => { await navigator.clipboard.writeText(location.origin + "/" + linkFor()); ev.target.textContent = "Copied"; setTimeout(() => (ev.target.textContent = "Copy link"), 1200); };
 
