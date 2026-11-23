@@ -31,6 +31,7 @@
   .row { display: grid; grid-template-columns: auto 1fr auto auto; gap: 6px 8px; align-items: center; padding: 3px 0; border-top: 1px solid rgba(43,36,32,.08); font-size: 13px; }
   .row .eta { font-weight: 600; font-variant-numeric: tabular-nums; }
   .row .dest { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #tip { position: fixed; display: none; z-index: 6; pointer-events: none; background: var(--card); border: 1px solid rgba(43,36,32,.14); border-radius: 8px; padding: 5px 9px; font: 500 13px Inter, sans-serif; color: var(--ink); box-shadow: 0 4px 14px rgba(43,36,32,.12); white-space: nowrap; }
   .legend { display: flex; gap: 10px; font-size: 12px; color: #6b5f55; flex-wrap: wrap; }
   .legend span { display: flex; gap: 5px; align-items: center; }
   .about { font-size: 12.5px; color: #6b5f55; }
@@ -40,7 +41,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/openseadragon/5.0.1/openseadragon.min.js"></script>
 <script src="/geo.js"></script>
 </head><body>
-<div id="map"></div><canvas id="layer"></canvas>
+<div id="map"></div><canvas id="layer"></canvas><div id="tip"></div>
 <div class="ui tl">
   <div class="card">
     <h1>Small Phoenix</h1>
@@ -61,7 +62,7 @@
   <button class="btn" id="btn-share">Copy link</button>
 </div>
 <div class="ui br"><div class="card about">Streets and buildings from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · live positions from <a href="https://www.valleymetro.org/">Valley Metro</a></div></div>
-<script src="/layers.js"></script><script src="/transit.js"></script><script src="/planes.js"></script><script src="/traffic.js"></script>
+<script src="/layers.js"></script><script src="/buildings.js"></script><script src="/transit.js"></script><script src="/planes.js"></script><script src="/traffic.js"></script>
 <script>
 (async () => {
   const mapName = new URLSearchParams(location.search).get("map") || "tempe", base = `/maps/${mapName}/`;
@@ -84,7 +85,7 @@
     const [lat, lon, z] = start.length ? start : [geo.center.lat, geo.center.lon, 3];
     const p = G.toPixel(lat, lon); viewer.viewport.zoomTo(z, null, true); viewer.viewport.panTo(viewer.viewport.imageToViewportCoordinates(p.x, p.y), true);
   });
-  const linkFor = () => { const q = mapName === "tempe" ? "" : `?map=${mapName}`; const c = viewer.viewport.viewportToImageCoordinates(viewer.viewport.getCenter()); const e = c.x * geo.mpp + geo.x0, n = (geo.y1 - c.y * geo.mpp) / G.S; return `${q}#${(geo.center.lat + n / geo.mPerDegLat).toFixed(5)},${(geo.center.lon + e / geo.mPerDegLon).toFixed(5)},${viewer.viewport.getZoom().toFixed(2)}`; };
+  const linkFor = () => { const q = mapName === "tempe" ? "" : `?map=${mapName}`; const c = viewer.viewport.viewportToImageCoordinates(viewer.viewport.getCenter()); const [lat, lon] = G.pixelToLatLon(c.x, c.y); return `${q}#${lat.toFixed(5)},${lon.toFixed(5)},${viewer.viewport.getZoom().toFixed(2)}`; };
   viewer.addHandler("animation-finish", () => history.replaceState(null, "", linkFor()));
   document.getElementById("btn-share").onclick = async (ev) => { await navigator.clipboard.writeText(location.origin + "/" + linkFor()); ev.target.textContent = "Copied"; setTimeout(() => (ev.target.textContent = "Copy link"), 1200); };
 
@@ -111,6 +112,7 @@
     toggles: { rail: document.getElementById("t-rail"), bus: document.getElementById("t-bus"), stops: document.getElementById("t-stops") } });
   Planes.start(planesUI);
   Traffic.start({ G, base, toggle: document.getElementById("t-traffic") });
+  Buildings.start({ G, base, viewer, tip: document.getElementById("tip") });
   viewer.addHandler("canvas-drag", () => { Transit.unfollow(); Planes.unfollow(); setFollow(false); });
   followBtn.onclick = () => { Transit.unfollow(); Planes.unfollow(); setFollow(false); };
 })();

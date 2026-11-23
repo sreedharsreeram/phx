@@ -14,7 +14,8 @@ if (!MAPS[MAP]) throw new Error(`unknown MAP ${MAP}`);
 export const BBOX = MAPS[MAP].bbox;
 export const MPP = MAPS[MAP].mpp;              // screen metres per pixel at full zoom
 export const CENTER = { lat: (BBOX.south + BBOX.north) / 2, lon: (BBOX.west + BBOX.east) / 2 };
-export const PITCH_DEG = 45;          // camera elevation; it looks north
+export const PITCH_DEG = 45;          // camera elevation above the horizon
+export const YAW_DEG = 35;            // camera swung this far west of due north, so south and west faces both show
 export const TILE = 1024;             // DeepZoom tile size
 export const CHUNK = 2048;            // render chunk size (pixels)
 export const DEPTH_CELL_PX = 4;       // depth grid cell, in full-res pixels

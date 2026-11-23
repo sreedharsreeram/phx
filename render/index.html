@@ -9,7 +9,7 @@ import * as BGU from "three/addons/utils/BufferGeometryUtils.js";
 const P = Object.fromEntries(new URLSearchParams(location.search));
 const CHUNK = +P.chunk || 2048, DEPTH_DIV = +P.depthDiv || 4, DATA = P.data || "/data/tempe";
 const [scene, geo] = await Promise.all([fetch(`${DATA}/scene.json`).then((r) => r.json()), fetch(`${DATA}/geo.json`).then((r) => r.json())]);
-const th = (geo.pitch * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th);
+const th = (geo.pitch * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th), CAM = geo.cam;
 const pal = geo.palette, col = (hex) => new THREE.Color(hex);
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return (h >>> 0) / 4294967295; };
 
@@ -19,11 +19,13 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDraw
 renderer.setPixelRatio(1); renderer.setSize(CHUNK, CHUNK, false); renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
 const world = new THREE.Scene(); world.background = col(pal.ground);
-const DIST = 30000, camDir = new THREE.Vector3(0, -S, -C), camUp = new THREE.Vector3(0, C, -S);
+const DIST = CAM.dist, camDir = new THREE.Vector3(...CAM.dir), camUp = new THREE.Vector3(...CAM.up);
 const camera = window.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2 * DIST + 5000);
-camera.position.copy(camDir.clone().multiplyScalar(-DIST)); camera.up.copy(camUp); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+camera.position.set(...CAM.pos); camera.up.copy(camUp); camera.lookAt(0, 0, 0); camera.updateMatrixWorld();
+// screen (sx, sy) at ground level -> world (e, n): solve the 2x2 system from the right/up vectors
+const groundAt = (sx, sy) => { const [rx, , rz] = CAM.right, [ux, , uz] = CAM.up, det = rx * uz - rz * ux; const X = (sx * uz - sy * rz) / det, Z = (rx * sy - ux * sx) / det; return [X, -Z]; };
 world.add(new THREE.HemisphereLight(0xfff4e6, 0xd8cfc0, 1.25));
-const SUN_DIR = new THREE.Vector3(-0.55, 1.25, 0.75).normalize();
+const SUN_DIR = new THREE.Vector3(-0.75, 1.25, 0.9).normalize();
 const sun = new THREE.DirectionalLight(0xfff3e0, 1.35); sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6; world.add(sun, sun.target);
 
 const lambert = (c, extra = {}) => new THREE.MeshLambertMaterial({ color: col(c), ...extra });
@@ -172,7 +174,7 @@ const pix = new Uint8Array((CHUNK / DEPTH_DIV) ** 2 * 4);
 window.renderChunk = (px, py, w = CHUNK, h = CHUNK) => {
   const l = geo.x0 + px * geo.mpp, t = geo.y1 - py * geo.mpp;
   camera.left = l; camera.right = l + w * geo.mpp; camera.top = t; camera.bottom = t - h * geo.mpp; camera.updateProjectionMatrix();
-  const ce = l + (w * geo.mpp) / 2, cn = (t - (h * geo.mpp) / 2) / S, R = Math.max(w, h) * geo.mpp * 0.95;
+  const [ce, cn] = groundAt(l + (w * geo.mpp) / 2, t - (h * geo.mpp) / 2), R = Math.max(w, h) * geo.mpp * 1.1;
   sun.target.position.set(ce, 0, -cn); sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, 3000);
   Object.assign(sun.shadow.camera, { left: -R, right: R, top: R, bottom: -R, near: 1000, far: 5000 }); sun.shadow.camera.updateProjectionMatrix(); sun.target.updateMatrixWorld(); sun.updateMatrixWorld();
   renderer.setRenderTarget(null); renderer.render(world, camera);

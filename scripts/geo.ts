@@ -1,16 +1,23 @@
 // Writes data/geo.json (shared by the renderer and the site): the camera, the map's pixel extent, and the palette.
-import { BBOX, CENTER, MPP, PITCH_DEG, CHUNK, DEPTH_CELL_PX, M_PER_DEG_LAT, M_PER_DEG_LON, toEN, DIRS, MAP, MAPS } from "../config";
+import { BBOX, CENTER, MPP, PITCH_DEG, YAW_DEG, CHUNK, DEPTH_CELL_PX, M_PER_DEG_LAT, M_PER_DEG_LON, toEN, DIRS, MAP, MAPS } from "../config";
 import { mkdirSync } from "node:fs";
 mkdirSync(DIRS.data, { recursive: true });
 
-const th = (PITCH_DEG * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th);
+// World: X = east, Y = up, Z = -north. The camera sits far to the south-west and above, looking north-east and down.
+const th = (PITCH_DEG * Math.PI) / 180, ya = (YAW_DEG * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th);
+const dir = [C * Math.sin(ya), -S, -C * Math.cos(ya)];                 // unit view direction
+const right = [Math.cos(ya), 0, Math.sin(ya)];                          // screen x, in the ground plane, perpendicular to the view
+const up = [S * Math.sin(ya), C, -S * Math.cos(ya)];                    // screen y (upwards): world-up with the view component removed
+const DIST = 30000, pos = dir.map((d) => -d * DIST);
+const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const sw = toEN(BBOX.south, BBOX.west), ne = toEN(BBOX.north, BBOX.east);
 const HMAX = 230;   // tallest thing we'd draw, metres
-// screen-plane coordinates: sx = east, sy = n*sin(pitch) + h*cos(pitch)
-const x0 = sw.e, x1 = ne.e, y1 = ne.n * S + HMAX * C, y0 = sw.n * S;
+const corners: number[][] = []; for (const e of [sw.e, ne.e]) for (const n of [sw.n, ne.n]) for (const h of [0, HMAX]) corners.push([e, h, -n]);
+const sx = corners.map((c) => dot(right, c)), sy = corners.map((c) => dot(up, c));
+const x0 = Math.min(...sx), x1 = Math.max(...sx), y1 = Math.max(...sy), y0 = Math.min(...sy);
 const W = Math.ceil((x1 - x0) / MPP / CHUNK) * CHUNK, H = Math.ceil((y1 - y0) / MPP / CHUNK) * CHUNK;
 const geo = {
-  center: CENTER, mPerDegLat: M_PER_DEG_LAT, mPerDegLon: M_PER_DEG_LON, pitch: PITCH_DEG, mpp: MPP,
+  center: CENTER, mPerDegLat: M_PER_DEG_LAT, mPerDegLon: M_PER_DEG_LON, pitch: PITCH_DEG, yaw: YAW_DEG, mpp: MPP, cam: { dir, right, up, pos, dist: DIST },
   x0, y1, W, H, extent: { e0: sw.e, e1: ne.e, n0: sw.n, n1: ne.n },
   depthGrid: { cell: DEPTH_CELL_PX, w: W / DEPTH_CELL_PX, h: H / DEPTH_CELL_PX },
   palette: {

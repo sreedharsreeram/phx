@@ -76,6 +76,9 @@ for (const f of src.features) {
 await Bun.write(`${DIRS.data}/scene.json`, JSON.stringify(scene));
 console.log(Object.fromEntries(Object.entries(scene).map(([k, v]) => [k, v.length])), `${(JSON.stringify(scene).length / 1e6).toFixed(1)} MB`);
 
+// building footprints for the hover layer: outline in local metres, height, name, kind
+await Bun.write(`${DIRS.pub}/buildings.json`, JSON.stringify(scene.buildings.filter((b) => b.o.length >= 4).map((b) => ({ o: b.o.map(([e, n]) => [+e.toFixed(1), +n.toFixed(1)]), h: +b.h.toFixed(1), m: b.m, n: b.n, k: b.k }))));
+
 // drivable graph for the traffic simulation, with the same widths/lanes the renderer draws
 {
   const nodeIx = new Map<string, number>(), nodes: Pt[] = [], edges: number[][] = [];

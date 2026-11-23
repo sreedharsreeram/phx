@@ -8,25 +8,27 @@
     });
   }
   function make(geo, depth /* Uint16Array or null */) {
-    const th = (geo.pitch * Math.PI) / 180, S = Math.sin(th), C = Math.cos(th), dg = geo.depthGrid;
+    const dg = geo.depthGrid, cam = geo.cam, dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     const toEN = (lat, lon) => [(lon - geo.center.lon) * geo.mPerDegLon, (lat - geo.center.lat) * geo.mPerDegLat];
-    // view depth of a point, in the renderer's convention: metres along the camera ray from the camera position
-    const cam = dg.cam, viewDepth = (e, n, h) => (e - cam.pos[0]) * cam.dir[0] + (h - cam.pos[1]) * cam.dir[1] + (-n - cam.pos[2]) * cam.dir[2];
-    const enToPixel = (e, n, h = 0) => ({ x: (e - geo.x0) / geo.mpp, y: (geo.y1 - (n * S + h * C)) / geo.mpp, depth: viewDepth(e, n, h) });
+    // world point (X = east, Y = up, Z = -north) -> map pixel + view depth (metres along the camera ray from the camera)
+    const enToPixel = (e, n, h = 0) => { const p = [e, h, -n]; return { x: (dot(cam.right, p) - geo.x0) / geo.mpp, y: (geo.y1 - dot(cam.up, p)) / geo.mpp, depth: dot(cam.dir, [p[0] - cam.pos[0], p[1] - cam.pos[1], p[2] - cam.pos[2]]) }; };
     function toPixel(lat, lon, h = 0) { const [e, n] = toEN(lat, lon); return enToPixel(e, n, h); }
-    // scene depth at a map pixel (metres), or null off-grid / without the grid
+    // map pixel at ground level -> lat/lon (used for links)
+    function pixelToLatLon(px, py) {
+      const sx = geo.x0 + px * geo.mpp, sy = geo.y1 - py * geo.mpp, [rx, , rz] = cam.right, [ux, , uz] = cam.up, det = rx * uz - rz * ux;
+      const X = (sx * uz - sy * rz) / det, Z = (rx * sy - ux * sx) / det;
+      return [geo.center.lat + -Z / geo.mPerDegLat, geo.center.lon + X / geo.mPerDegLon];
+    }
     function sceneDepth(px, py) {
       if (!depth) return null;
       const i = Math.floor(px / dg.cell), j = Math.floor(py / dg.cell);
       if (i < 0 || j < 0 || i >= dg.w || j >= dg.h) return null;
       return dg.lo + (depth[j * dg.w + i] / 65535) * dg.span;
     }
-    // is a point at this pixel hidden behind something drawn? (tolerance in metres along the ray)
     const hidden = (p, tol = 1.5) => { const d = sceneDepth(p.x, p.y); return d != null && d < p.depth - tol; };
     // screen-space direction of a compass bearing (degrees clockwise from north), unit vector in pixels
-    const heading = (deg) => { const r = (deg * Math.PI) / 180, dx = Math.sin(r), dy = -Math.cos(r) * S, L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; };
-    const pxPerMetreNorth = S / geo.mpp, pxPerMetreEast = 1 / geo.mpp;
-    return { toEN, toPixel, enToPixel, sceneDepth, hidden, heading, S, C, pxPerMetreNorth, pxPerMetreEast };
+    const heading = (deg) => { const r = (deg * Math.PI) / 180, w = [Math.sin(r), 0, -Math.cos(r)], dx = dot(cam.right, w), dy = -dot(cam.up, w), L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; };
+    return { toEN, toPixel, enToPixel, pixelToLatLon, sceneDepth, hidden, heading };
   }
   root.IsoGeo = { make, load: (geo, base = "/") => undelta(base + "depth.bin", geo.depthGrid.w * geo.depthGrid.h, geo.depthGrid.w) };
 })(window);

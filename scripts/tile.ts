@@ -79,7 +79,7 @@ if (!process.env.DEPTH_ONLY) await Bun.write(`${DIRS.pub}/map.json`, JSON.string
   const gz = gzipSync(Buffer.from(delta.buffer));
   await Bun.write(`${DIRS.pub}/depth.bin`, gz);
   const cam = JSON.parse(await Bun.file(`${DIRS.out}/cam.json`).text());
-  const site = { center: geo.center, mPerDegLat: geo.mPerDegLat, mPerDegLon: geo.mPerDegLon, pitch: geo.pitch, mpp: geo.mpp / UP, x0: geo.x0, y1: geo.y1, W, H, extent: geo.extent,
+  const site = { center: geo.center, mPerDegLat: geo.mPerDegLat, mPerDegLon: geo.mPerDegLon, pitch: geo.pitch, yaw: geo.yaw, cam: geo.cam, mpp: geo.mpp / UP, x0: geo.x0, y1: geo.y1, W, H, extent: geo.extent,
     depthGrid: { cell: DEPTH_CELL_PX * UP, w: gw, h: gh, lo, span, cam: { pos: cam.pos, dir: cam.dir } } };
   await Bun.write(`${DIRS.pub}/geo.json`, JSON.stringify({ ...site, map: geo.map, title: geo.title, workArea: geo.workArea ?? null }));
   console.log(`depth grid ${gw}x${gh}, ${lo.toFixed(1)}..${hiScene.toFixed(1)} m, ${(gz.length / 1e6).toFixed(1)} MB gz`);
