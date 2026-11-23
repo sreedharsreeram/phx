@@ -168,5 +168,70 @@
   "set": {
    "notes": "The Westin Tempe: modern glass-and-white-panel hotel tower with a 'WESTIN' sign at the crown and a porte-cochere on 7th St."
   }
+ },
+ {
+  "match": {
+   "name": "ōLiv Tempe"
+  },
+  "source": "Wikipedia 'List of tallest buildings in Arizona' (Tempe table); USGS LiDAR predates these towers; 259 ft, 24 floors, 2020",
+  "set": {
+   "h": 79,
+   "k": "apartments",
+   "glass": true,
+   "notes": "ōLiv Tempe: slender 24-storey student-housing tower, light panels and dark glass with vertical fins, rooftop pool deck and sundeck, ground-floor lobby on Myrtle Ave."
+  }
+ },
+ {
+  "match": {
+   "name": "The Westin Tempe"
+  },
+  "source": "Wikipedia 'List of tallest buildings in Arizona' (Tempe table); USGS LiDAR predates these towers; 223 ft, 18 floors, 2021",
+  "set": {
+   "h": 68,
+   "k": "hotel",
+   "glass": true
+  }
+ },
+ {
+  "match": {
+   "name": "Residence Inn Tempe Downtown"
+  },
+  "source": "Wikipedia 'List of tallest buildings in Arizona' (Tempe table); USGS LiDAR predates these towers; 145 ft, 11 floors, 2013",
+  "set": {
+   "h": 44,
+   "k": "hotel",
+   "notes": "Residence Inn Tempe Downtown: 11-storey hotel, warm stucco and glass, 'Residence Inn' sign at the top."
+  }
+ },
+ {
+  "match": {
+   "name": "University House Tempe"
+  },
+  "source": "Wikipedia 'List of tallest buildings in Arizona' (Tempe table); USGS LiDAR predates these towers; 193 ft, 19 floors, 2013",
+  "set": {
+   "h": 58,
+   "k": "apartments",
+   "notes": "University House Tempe: 19-storey student apartment tower, grey and white panels with balconies."
+  }
+ },
+ {
+  "match": {
+   "name": "Canopy"
+  },
+  "source": "Wikipedia 'List of tallest buildings in Arizona' (Tempe table); USGS LiDAR predates these towers; Tempe Hilton Canopy Hotel 159 ft, 14 floors, 2020",
+  "set": {
+   "h": 48,
+   "k": "hotel",
+   "notes": "Canopy by Hilton Tempe: 14-storey hotel, dark brick base with glass tower above, 'Canopy' sign."
+  }
+ },
+ {
+  "match": {
+   "name": "Mirabella at ASU"
+  },
+  "source": "Wikipedia 'List of tallest buildings in Arizona' (Tempe table); USGS LiDAR predates these towers; 250 ft, 20 floors, 2020",
+  "set": {
+   "h": 76
+  }
  }
 ]
