@@ -12,8 +12,14 @@ Valley Metro train, streetcar and bus live. In the spirit of [smallsf.com](https
    orthographic camera looking north, tilted 45°. The map is rendered in 2048 px chunks, plus a linear depth pass.
 3. **Picture → tiles.** `scripts/tile.ts` cuts chunks into a DeepZoom pyramid of WebP tiles and packs the depth into a
    gzipped 16-bit grid so live vehicles can hide behind buildings.
-4. **Live.** `server.ts` serves the site and proxies Valley Metro's GTFS-Realtime vehicle positions as JSON (10 s cache).
-   `public/transit.js` snaps trains to their GTFS shapes and eases every vehicle between reports.
+4. **Live.** `server.ts` serves the site and proxies, with short caches: Valley Metro GTFS-Realtime vehicle positions and trip
+   updates (`/api/vehicles`, `/api/arrivals`, `/api/trip-status`) and ADS-B aircraft from adsb.fi (`/api/aircraft`).
+   `public/transit.js` snaps trains to their GTFS shapes and shows predicted arrivals; `public/planes.js` dead-reckons aircraft
+   between polls and draws them at altitude with a ground shadow; `public/traffic.js` simulates cars on the OSM road graph
+   (`public/data/roads.json`) with real signal locations and a Phoenix rush-hour curve.
+5. **Optional illustration pass.** `scripts/redraw.ts` sends overlapping 1024 px windows of the render to an image model and
+   feathers the results back (`REDRAW_PROVIDER=openai|gemini|mock`, needs `OPENAI_API_KEY` / `GEMINI_API_KEY`); then
+   `SOURCE=redrawn bun run tile` builds the pyramid from it.
 
 ```sh
 bun install

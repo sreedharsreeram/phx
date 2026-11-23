@@ -9,7 +9,10 @@ export const CHUNK = 2048;            // render chunk size (pixels)
 export const DEPTH_CELL_PX = 4;       // depth grid cell, in full-res pixels (2 m at MPP 0.5)
 
 export const GTFS_KEY = "4f22263f69671d7f49726c3011333e527368211f";   // Valley Metro's published open-data key
-export const GTFS_RT = (feed: "vehicles" | "alerts") => `https://mna.mecatran.com/utw/ws/gtfsfeed/${feed}/valleymetro?apiKey=${GTFS_KEY}`;
+export const GTFS_RT = (feed: "vehicles" | "alerts" | "realtime") => `https://mna.mecatran.com/utw/ws/gtfsfeed/${feed}/valleymetro?apiKey=${GTFS_KEY}`;
+// adsb.fi open data: 1 request/second; centre on Sky Harbor, radius in nautical miles
+export const ADSB_URL = `https://opendata.adsb.fi/api/v2/lat/${CENTER.lat}/lon/${CENTER.lon}/dist/22`;
+export const ADSB_FALLBACK = `https://api.adsb.lol/v2/lat/${CENTER.lat}/lon/${CENTER.lon}/dist/22`;
 export const GTFS_STATIC = `https://mna.mecatran.com/utw/ws/gtfsfeed/static/valleymetro?apiKey=${GTFS_KEY}`;
 
 // Local tangent plane: metres east / north of CENTER. Phoenix is flat enough that an equirectangular plane is fine here.

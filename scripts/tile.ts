@@ -6,6 +6,12 @@ import { gzipSync } from "node:zlib";
 import { CHUNK, TILE, DEPTH_CELL_PX } from "../config";
 
 sharp.cache(false); sharp.concurrency(4);
+// SOURCE=redrawn uses out/redrawn/ (image-model pass) where a chunk exists there, else the plain render
+const SOURCE = process.env.SOURCE || "chunks";
+const chunkPath = (cx: number, cy: number) => { const r = `out/${SOURCE}/${cx}_${cy}.png`; return SOURCE !== "chunks" && existsSync(r) ? r : `out/chunks/${cx}_${cy}.png`; };
+// paper grain: a tiled noise texture multiplied in very lightly, so flat colour reads as print rather than vector
+const grain = await sharp({ create: { width: 512, height: 512, channels: 3, noise: { type: "gaussian", mean: 236, sigma: 9 } } }).png().toBuffer();
+const paper = async (src: string) => sharp(src).composite([{ input: grain, tile: true, blend: "multiply" }]).png().toBuffer();
 const geo = JSON.parse(await Bun.file("data/geo.json").text());
 const { W, H } = geo, nx = W / CHUNK, ny = H / CHUNK, PER = CHUNK / TILE;
 const maxLevel = Math.ceil(Math.log2(Math.max(W, H)));
@@ -18,12 +24,13 @@ const webp = { quality: 82, effort: 4 };
 {
   const d = dir(maxLevel); let n = 0; const jobs: Promise<unknown>[] = [];
   for (let cy = 0; cy < ny; cy++) for (let cx = 0; cx < nx; cx++) {
-    const src = `out/chunks/${cx}_${cy}.png`; if (!existsSync(src)) { console.log("missing", src); continue; }
+    const src = chunkPath(cx, cy); if (!existsSync(src)) { console.log("missing", src); continue; }
+    const buf = await paper(src);
     for (let ty = 0; ty < PER; ty++) for (let tx = 0; tx < PER; tx++) {
       const out = `${d}/${cx * PER + tx}_${cy * PER + ty}.webp`; if (existsSync(out)) continue;
-      jobs.push(sharp(src).extract({ left: tx * TILE, top: ty * TILE, width: TILE, height: TILE }).webp(webp).toFile(out)); n++;
-      if (jobs.length >= 16) { await Promise.all(jobs); jobs.length = 0; }
+      jobs.push(sharp(buf).extract({ left: tx * TILE, top: ty * TILE, width: TILE, height: TILE }).webp(webp).toFile(out)); n++;
     }
+    await Promise.all(jobs); jobs.length = 0;
   }
   await Promise.all(jobs); console.log(`level ${maxLevel}: ${n} tiles`);
 }

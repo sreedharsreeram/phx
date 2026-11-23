@@ -12,10 +12,8 @@
     const toEN = (lat, lon) => [(lon - geo.center.lon) * geo.mPerDegLon, (lat - geo.center.lat) * geo.mPerDegLat];
     // view depth of a point, in the renderer's convention: metres along the camera ray from the camera position
     const cam = dg.cam, viewDepth = (e, n, h) => (e - cam.pos[0]) * cam.dir[0] + (h - cam.pos[1]) * cam.dir[1] + (-n - cam.pos[2]) * cam.dir[2];
-    function toPixel(lat, lon, h = 0) {
-      const [e, n] = toEN(lat, lon);
-      return { x: (e - geo.x0) / geo.mpp, y: (geo.y1 - (n * S + h * C)) / geo.mpp, depth: viewDepth(e, n, h) };
-    }
+    const enToPixel = (e, n, h = 0) => ({ x: (e - geo.x0) / geo.mpp, y: (geo.y1 - (n * S + h * C)) / geo.mpp, depth: viewDepth(e, n, h) });
+    function toPixel(lat, lon, h = 0) { const [e, n] = toEN(lat, lon); return enToPixel(e, n, h); }
     // scene depth at a map pixel (metres), or null off-grid / without the grid
     function sceneDepth(px, py) {
       if (!depth) return null;
@@ -28,7 +26,7 @@
     // screen-space direction of a compass bearing (degrees clockwise from north), unit vector in pixels
     const heading = (deg) => { const r = (deg * Math.PI) / 180, dx = Math.sin(r), dy = -Math.cos(r) * S, L = Math.hypot(dx, dy) || 1; return [dx / L, dy / L]; };
     const pxPerMetreNorth = S / geo.mpp, pxPerMetreEast = 1 / geo.mpp;
-    return { toEN, toPixel, sceneDepth, hidden, heading, S, C, pxPerMetreNorth, pxPerMetreEast };
+    return { toEN, toPixel, enToPixel, sceneDepth, hidden, heading, S, C, pxPerMetreNorth, pxPerMetreEast };
   }
   root.IsoGeo = { make, load: (geo) => undelta("/depth.bin", geo.depthGrid.w * geo.depthGrid.h, geo.depthGrid.w) };
 })(window);
