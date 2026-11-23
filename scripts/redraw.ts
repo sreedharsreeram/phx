@@ -97,7 +97,13 @@ providers.bedrock = async (png) => {
 const redraw = providers[PROVIDER]; if (!redraw) throw new Error(`unknown provider ${PROVIDER}`);
 
 // feather mask: full in the middle, fading over PAD px at each edge, so overlapping windows blend
-const mask = await (async () => { const n = (WIN + 2 * PAD) * UP, PADU = PAD * UP, raw = Buffer.alloc(n * n); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const fx = Math.min(1, Math.min(x, n - 1 - x) / PADU), fy = Math.min(1, Math.min(y, n - 1 - y) / PADU); raw[y * n + x] = Math.round(255 * Math.min(fx, fy)); } return sharp(raw, { raw: { width: n, height: n, channels: 1 } }).png().toBuffer(); })();
+const maskRaw = (() => { const n = (WIN + 2 * PAD) * UP, PADU = PAD * UP, raw = Buffer.alloc(n * n); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const fx = Math.min(1, Math.min(x, n - 1 - x) / PADU), fy = Math.min(1, Math.min(y, n - 1 - y) / PADU); raw[y * n + x] = Math.round(255 * Math.min(fx, fy)); } return raw; })();
+// alpha = feather × the window's own coverage (strips left uncovered by registration stay transparent for the neighbour to fill)
+async function feathered(buf: Buffer) {
+  const { data, info } = await sharp(buf).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+  for (let i = 0, p = 3; i < maskRaw.length; i++, p += 4) data[p] = Math.round((data[p] * maskRaw[i]) / 255);
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: 4 } }).png().toBuffer();
+}
 
 // accumulate per chunk: redrawn windows composited with the feather mask onto the plain render. Windows run POOL at a time.
 const POOL = Number(process.env.POOL || 4);
@@ -162,17 +168,18 @@ async function runJob(j: Job): Promise<Buffer | null> {
   const sent = PROVIDER === "bedrock" ? await sharp(framed).resize(1024, 1024).png().toBuffer() : framed;
   const facts = factsFor(j.px, j.py, j.size); if (facts) console.log(`  facts for window ${j.wx},${j.wy}:\n${facts}`);
   // RAW_FROM=<pass> reuses that pass's raw model output instead of calling the API (free re-composites)
-  const rawPath = j.cache.replace(/([^/]+)$/, "raw-$1"), prevRaw = process.env.RAW_FROM ? rawPath.replace(`/${process.env.PASS}-`, `/${process.env.RAW_FROM}-`) : null;
+  const rawPath = j.cache.replace(/([^/]+)$/, "raw-$1"), prevRaw = process.env.RAW_FROM ? rawPath.replace(`/raw-${process.env.PASS}-`, `/raw-${process.env.RAW_FROM}-`) : null;
+  if (prevRaw && !existsSync(prevRaw) && process.env.RAW_FROM !== process.env.PASS) throw new Error(`RAW_FROM=${process.env.RAW_FROM}: no raw output at ${prevRaw}`);
   let raw: Buffer;
   if (prevRaw && existsSync(prevRaw)) raw = Buffer.from(await Bun.file(prevRaw).arrayBuffer());
   else { const got = await redraw(sent, outSize, facts); raw = await sharp(got).resize(outSize, outSize, { fit: "fill" }).png().toBuffer(); }
   await Bun.write(rawPath, raw);
-  // 1) drop the frame: inner picture over the (upscaled) source render  2) align to the source  3) lay it over the source again
+  // 1) drop the frame (ring becomes transparent)  2) align to the source; uncovered strips stay transparent
   const F = FRAME * UP, srcUp = await sharp(src).resize(outSize, outSize).png().toBuffer();
   const inner = await sharp(raw).extract({ left: F, top: F, width: outSize - 2 * F, height: outSize - 2 * F }).png().toBuffer();
-  const unframed = await sharp(srcUp).composite([{ input: inner, left: F, top: F }]).png().toBuffer();
+  const unframed = await sharp(inner).extend({ top: F, bottom: F, left: F, right: F, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
   const aligned = await registered(srcUp, unframed, outSize, `window ${j.wx},${j.wy}`);
-  const out = aligned === unframed ? unframed : await sharp(srcUp).composite([{ input: aligned, left: 0, top: 0 }]).png().toBuffer();
+  const out = aligned;
   await Bun.write(j.cache, out); n++; console.log(`  window ${j.wx},${j.wy} done (${n} new, ${((Date.now() - t0) / 1000).toFixed(0)}s)`);
   return out;
 }
@@ -185,7 +192,9 @@ async function normaliseTones() {
   const target = { mean: [0, 1, 2].map((c) => med([...stats.values()].map((s) => s.mean[c]))), std: [0, 1, 2].map((c) => med([...stats.values()].map((s) => s.std[c]))) };
   for (const [j, st] of stats) {
     const buf = results.get(j)!; const a = [0, 1, 2].map((c) => Math.min(1.25, Math.max(0.8, target.std[c] / (st.std[c] || 1)))), b = [0, 1, 2].map((c) => (target.mean[c] - st.mean[c] * a[c]) * 0.7);   // pull 70% of the way to the median
-    results.set(j, await sharp(buf).flatten({ background: "#eee5d6" }).linear(a, b).png().toBuffer());   // per-channel gain/offset
+    const alpha = await sharp(buf).ensureAlpha().extractChannel(3).raw().toBuffer(), rgb = await sharp(buf).removeAlpha().linear(a, b).raw().toBuffer({ resolveWithObject: true });
+    const rgba = Buffer.alloc(alpha.length * 4); for (let i = 0, p = 0; i < alpha.length; i++, p += 4) { rgba[p] = rgb.data[i * 3]; rgba[p + 1] = rgb.data[i * 3 + 1]; rgba[p + 2] = rgb.data[i * 3 + 2]; rgba[p + 3] = alpha[i]; }
+    results.set(j, await sharp(rgba, { raw: { width: rgb.info.width, height: rgb.info.height, channels: 4 } }).png().toBuffer());   // per-channel gain/offset, alpha kept
   }
   console.log(`tone-normalised ${stats.size} windows toward the median`);
 }
@@ -193,7 +202,7 @@ for (let i = 0; i < jobs.length; i += POOL) await Promise.all(jobs.slice(i, i + 
 if (!process.env.NO_TONE) await normaliseTones();
 for (const j of jobs) {
   const out = results.get(j); if (!out) continue;
-  const masked = await sharp(out).ensureAlpha().joinChannel(mask, { raw: undefined }).removeAlpha().joinChannel(mask).png().toBuffer();
+  const masked = await feathered(out);
   for (let cy2 = Math.max(0, Math.floor(j.py / CHUNK)); cy2 <= Math.min(ny - 1, Math.floor((j.py + j.size - 1) / CHUNK)); cy2++) for (let cx2 = Math.max(0, Math.floor(j.px / CHUNK)); cx2 <= Math.min(nx - 1, Math.floor((j.px + j.size - 1) / CHUNK)); cx2++) {
     const k = `${cx2}_${cy2}`; (acc.get(k) ?? acc.set(k, []).get(k)!).push({ input: masked, left: (j.px - cx2 * CHUNK) * UP, top: (j.py - cy2 * CHUNK) * UP });
   }
