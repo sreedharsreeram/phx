@@ -27,6 +27,7 @@
     "tile": "bun run scripts/tile.ts",
     "build": "bun run data:scene && bun run data:transit && bun run render && bun run tile",
     "dev": "bun --watch server.ts",
-    "start": "bun server.ts"
+    "start": "bun server.ts",
+    "backup": "scripts/backup.sh"
   }
 }
