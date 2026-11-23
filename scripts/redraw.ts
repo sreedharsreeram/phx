@@ -34,7 +34,7 @@ const allB = (JSON.parse(await Bun.file(`${DIRS.data}/scene.json`).text()).build
 const roofPx = (b: any) => { const c = b.o.reduce((a: number[], p: number[]) => [a[0] + p[0] / b.o.length, a[1] + p[1] / b.o.length], [0, 0]); const w = [c[0], b.h, -c[1]]; return [(dot3(geo.cam.right, w) - geo.x0) / geo.mpp, (geo.y1 - dot3(geo.cam.up, w)) / geo.mpp]; };
 const buildingsIn = (px: number, py: number, size: number) => allB.filter((b) => { const [x, y] = roofPx(b); return x >= px && x < px + size && y >= py && y < py + size; }).length;
 const factsFor = (px: number, py: number, size: number) => sceneB.filter((b) => { const c = b.o.reduce((a: number[], p: number[]) => [a[0] + p[0] / b.o.length, a[1] + p[1] / b.o.length], [0, 0]); const w = [c[0], b.h, -c[1]];
-  const x = (dot3(geo.cam.right, w) - geo.x0) / geo.mpp, y = (geo.y1 - dot3(geo.cam.up, w)) / geo.mpp; return x >= px && x < px + size && y >= py && y < py + size; }).map((b) => `- ${b.n}: ${b.notes}`).join("\n");
+  const x = (dot3(geo.cam.right, w) - geo.x0) / geo.mpp, y = (geo.y1 - dot3(geo.cam.up, w)) / geo.mpp; return x >= px && x < px + size && y >= py && y < py + size; }).map((b) => `- ${b.n ?? b.a ?? "unnamed building"}: ${b.notes}`).join("\n");
 
 // one window of the full map, read across chunk boundaries
 async function window_(px: number, py: number, w: number, h: number) {

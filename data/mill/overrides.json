@@ -1,24 +1,172 @@
 [
-  { "match": { "name": "Brickyard Engineering" }, "source": "Commons photos 10, 21; OSM had 7 m retail",
-    "set": { "h": 22, "k": "university", "c": "#a9573d", "notes": "ASU Brickyard: 5-storey red-orange brick with cream stone banding and cornice, arched top-floor windows, blue-tinted glass in dark frames; charcoal metal awnings on cable stays over ground-floor shops on Mill; 'Ira A. Fulton Schools of Engineering' and ASU signage; small upper balconies; flat roof with mechanical units." } },
-  { "match": { "name": "West 6 Apartments" }, "source": "CTBUH heights; Commons photos 1, 5, 19",
-    "set": { "h": 105, "k": "apartments", "glass": true, "c": "#9fb8c4", "notes": "West 6th towers: teal/blue-green tinted glass curtain wall with pale cream horizontal spandrel bands and stacked balconies, flat crown with parapet and rooftop units; sits on a multi-level parking podium with ground-floor retail and palms at the Mill & 6th corner. (Second shorter tower, 22 floors, belongs beside it.)" } },
-  { "match": { "name": "Tempe Mission Palms" }, "source": "hotel, 4 levels per OSM; Mission-style",
-    "set": { "notes": "Tempe Mission Palms hotel: 4 storeys of warm cream stucco in Spanish Mission style, arched openings, terracotta tile accents and parapets, a central courtyard with pool and tall palms, porte-cochere entry; flat roofs with mechanical units." } },
-  { "match": { "name": "Hayden Square Condominiums" }, "source": "OSM; octagonal footprints",
-    "set": { "notes": "Hayden Square: a cluster of octagonal 3-4 storey stucco condominium towers in tan and terracotta tones with flat roofs and small balconies, set in paved courtyards with palms and shade trees." } },
-  { "match": { "name": "Emerson Mill Avenue" }, "source": "OSM 6 levels, apartments",
-    "set": { "notes": "Emerson Mill Avenue: modern 6-storey apartment block, mix of red brick and light grey/white panel facades, regular window grid, recessed balconies, rooftop units, ground-floor leasing office and retail glass along Mill." } },
-  { "match": { "name": "Sonesta Select Tempe Downtown" }, "source": "hotel per OSM",
-    "set": { "h": 12, "notes": "Sonesta Select hotel: 3-storey light stucco hotel with regular window rows, surface parking with palms." } },
-  { "match": { "name": "Vib" }, "source": "hotel per OSM",
-    "set": { "h": 16, "notes": "Vib hotel: modern 4-storey hotel with grey and white panels and bright yellow accents, large ground-floor glazing." } },
-  { "match": { "name": "Tempe Fire Station 6" }, "source": "OSM",
-    "set": { "h": 7, "notes": "Tempe Fire Station 6: low tan masonry fire station with red apparatus-bay doors and a small tower." } },
-  { "match": { "name": "United States Post Office" }, "source": "OSM",
-    "set": { "notes": "US Post Office: small single-storey tan masonry building with blue USPS signage and a flat roof." } },
-  { "match": { "name": "Encore On Farmer" }, "source": "OSM 18 m apartments",
-    "set": { "notes": "Encore on Farmer: 5-storey modern apartments, white and charcoal panels with wood-tone accents, balconies." } },
-  { "match": { "name": "Centerpoint" }, "source": "OSM; AMC Centerpoint 11 cinema",
-    "set": { "notes": "Centerpoint: low cream stucco retail block with a cinema (AMC Centerpoint 11) marquee, storefront glazing along Mill." } }
+ {
+  "match": {
+   "name": "Brickyard Engineering"
+  },
+  "source": "Commons photos 10, 21; OSM had 7 m retail",
+  "set": {
+   "h": 22,
+   "k": "university",
+   "c": "#a9573d",
+   "notes": "ASU Brickyard: 5-storey red-orange brick with cream stone banding and cornice, arched top-floor windows, blue-tinted glass in dark frames; charcoal metal awnings on cable stays over ground-floor shops on Mill; tall vertical maroon banners with gold lettering reading 'Ira A. Fulton Schools of Engineering' hung between the upper arched windows on the Mill Ave face, a large white 'ASU' sign high on the brick, and a Bank of America sign on the blue steel ground-floor canopy; small upper balconies; flat roof with mechanical units."
+  }
+ },
+ {
+  "match": {
+   "name": "West 6 Apartments"
+  },
+  "source": "CTBUH heights; Commons photos 1, 5, 19",
+  "set": {
+   "h": 105,
+   "k": "apartments",
+   "glass": true,
+   "c": "#9fb8c4",
+   "notes": "West 6th towers: teal/blue-green tinted glass curtain wall with pale cream horizontal spandrel bands and stacked balconies, flat crown with parapet and rooftop units; sits on a multi-level parking podium with ground-floor retail and palms at the Mill & 6th corner. (Second shorter tower, 22 floors, belongs beside it.) 'WEST 6TH' sign on the podium at the Mill & 6th corner."
+  }
+ },
+ {
+  "match": {
+   "name": "Tempe Mission Palms"
+  },
+  "source": "hotel, 4 levels per OSM; Mission-style",
+  "set": {
+   "notes": "Tempe Mission Palms hotel: 4 storeys of warm cream stucco in Spanish Mission style, arched openings, terracotta tile accents and parapets, a central courtyard with pool and tall palms, porte-cochere entry; flat roofs with mechanical units. 'Tempe Mission Palms' sign in bronze letters on the entry tower."
+  }
+ },
+ {
+  "match": {
+   "name": "Hayden Square Condominiums"
+  },
+  "source": "OSM; octagonal footprints",
+  "set": {
+   "notes": "Hayden Square: a cluster of octagonal 3-4 storey stucco condominium towers in tan and terracotta tones with flat roofs and small balconies, set in paved courtyards with palms and shade trees."
+  }
+ },
+ {
+  "match": {
+   "name": "Emerson Mill Avenue"
+  },
+  "source": "OSM 6 levels, apartments",
+  "set": {
+   "notes": "Emerson Mill Avenue: modern 6-storey apartment block, mix of red brick and light grey/white panel facades, regular window grid, recessed balconies, rooftop units, ground-floor leasing office and retail glass along Mill."
+  }
+ },
+ {
+  "match": {
+   "name": "Sonesta Select Tempe Downtown"
+  },
+  "source": "hotel per OSM",
+  "set": {
+   "h": 12,
+   "notes": "Sonesta Select hotel: 3-storey light stucco hotel with regular window rows, surface parking with palms. 'Sonesta' sign at the entrance canopy."
+  }
+ },
+ {
+  "match": {
+   "name": "Vib"
+  },
+  "source": "hotel per OSM",
+  "set": {
+   "h": 16,
+   "notes": "Vib hotel: modern 4-storey hotel with grey and white panels and bright yellow accents, large ground-floor glazing. 'Vib' sign in yellow letters at the roofline."
+  }
+ },
+ {
+  "match": {
+   "name": "Tempe Fire Station 6"
+  },
+  "source": "OSM",
+  "set": {
+   "h": 7,
+   "notes": "Tempe Fire Station 6: low tan masonry fire station with red apparatus-bay doors and a small tower. 'Tempe Fire Station 6' lettering over the bay doors."
+  }
+ },
+ {
+  "match": {
+   "name": "United States Post Office"
+  },
+  "source": "OSM",
+  "set": {
+   "notes": "US Post Office: small single-storey tan masonry building with 'United States Post Office' lettering and a blue USPS eagle sign over the entrance and a flat roof."
+  }
+ },
+ {
+  "match": {
+   "name": "Encore On Farmer"
+  },
+  "source": "OSM 18 m apartments",
+  "set": {
+   "notes": "Encore on Farmer: 5-storey modern apartments, white and charcoal panels with wood-tone accents, balconies."
+  }
+ },
+ {
+  "match": {
+   "name": "Centerpoint"
+  },
+  "source": "OSM; AMC Centerpoint 11 cinema",
+  "set": {
+   "notes": "Centerpoint: low cream stucco retail block with a cinema (AMC Centerpoint 11) marquee: red 'AMC' letters and 'CENTERPOINT 11' on a cream parapet over the entrance, storefront glazing along Mill."
+  }
+ },
+ {
+  "match": {
+   "contains": [
+    33.42539,
+    -111.9399
+   ]
+  },
+  "source": "Nominatim: 501 S Mill Ave = Varsity Tavern + Low Key Piano Bar; sign look UNVERIFIED (no photo yet)",
+  "set": {
+   "n": "Varsity Tavern",
+   "notes": "Varsity Tavern, 501 S Mill Ave: two-storey brick bar at the NE corner of Mill & 5th with a large 'VARSITY' sign on the facade, awnings and a sidewalk patio with umbrellas; Low Key Piano Bar sign beside it."
+  }
+ },
+ {
+  "match": {
+   "contains": [
+    33.42466,
+    -111.94116
+   ]
+  },
+  "source": "OSM amenity: Snakes & Lattes, 20 W 6th St; sign look UNVERIFIED",
+  "set": {
+   "notes": "Snakes & Lattes board-game cafe: 'Snakes & Lattes' sign over the entrance on 6th St, patio seating."
+  }
+ },
+ {
+  "match": {
+   "contains": [
+    33.4269,
+    -111.94146
+   ]
+  },
+  "source": "OSM amenity: Cabin Tempe, 410 S Mill; sign look UNVERIFIED",
+  "set": {
+   "notes": "Cabin Tempe bar: rustic wood-clad storefront on Mill with a 'CABIN' sign and string-lit patio."
+  }
+ },
+ {
+  "match": {
+   "contains": [
+    33.42845,
+    -111.94388
+   ]
+  },
+  "source": "OSM amenity: Culinary Dropout, 149 S Farmer; sign look UNVERIFIED",
+  "set": {
+   "notes": "Culinary Dropout at The Yard: converted industrial building on Farmer Ave with large painted 'CULINARY DROPOUT' lettering on the wall and a big outdoor yard with games and shade sails."
+  }
+ },
+ {
+  "match": {
+   "contains": [
+    33.42281,
+    -111.93936
+   ]
+  },
+  "source": "OSM: The Westin Tempe, 11 E 7th St, 18 floors; sign look UNVERIFIED",
+  "set": {
+   "notes": "The Westin Tempe: modern glass-and-white-panel hotel tower with a 'WESTIN' sign at the crown and a porte-cochere on 7th St."
+  }
+ }
 ]

@@ -1,5 +1,5 @@
 // osmium-exported GeoJSON -> <data>/scene.json (local metres) + <pub>/roads.json (drivable graph), clipped to the map's box.
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { toEN, BBOX, DIRS, ROAD_CLASS, LANE_W } from "../config";
 
 type Pt = [number, number];
@@ -49,7 +49,7 @@ for (const f of src.features) {
   }
   if (t.building && t.building !== "no") {
     const h = buildingHeight(t), min = metres(t.min_height) ?? (t["building:min_level"] ? parseFloat(t["building:min_level"]) * 3.4 : 0);
-    for (const p of polys(g)) if (p.outer.length >= 4) scene.buildings.push({ o: p.outer, i: p.holes.length ? p.holes : undefined, h, m: min || undefined, k: t.building, n: t.name, a: t["addr:housenumber"] && t["addr:street"] ? `${t["addr:housenumber"]} ${t["addr:street"]}` : undefined, u: asu(t) || undefined, r: t["roof:shape"], c: t["building:colour"] });
+    for (const p of polys(g)) if (p.outer.length >= 4) scene.buildings.push({ o: p.outer, i: p.holes.length ? p.holes : undefined, h, m: min || undefined, k: t.building, n: t.name, hs: metres(t.height) ?? t["building:levels"] ? "osm" : "default", a: t["addr:housenumber"] && t["addr:street"] ? `${t["addr:housenumber"]} ${t["addr:street"]}` : undefined, u: asu(t) || undefined, r: t["roof:shape"], c: t["building:colour"] });
     continue;
   }
   if (t.highway) {
@@ -76,13 +76,53 @@ for (const f of src.features) {
 // photo-verified overrides beat OSM guesses: data/<map>/overrides.json [{ match: { name }, set: { h, k, c, glass, ... } }]
 const ovPath = `${DIRS.data}/overrides.json`;
 if (await Bun.file(ovPath).exists()) {
-  const ov = JSON.parse(await Bun.file(ovPath).text()) as { match: { name?: string; at?: [number, number] }; set: Record<string, any> }[];
+  const ov = JSON.parse(await Bun.file(ovPath).text()) as { match: { name?: string; at?: [number, number]; contains?: [number, number] }; set: Record<string, any> }[];
+  const inPoly = (pt: { e: number; n: number }, o: number[][]) => { let c = false; for (let i = 0, j = o.length - 1; i < o.length; j = i++) if (o[i][1] > pt.n !== o[j][1] > pt.n && pt.e < ((o[j][0] - o[i][0]) * (pt.n - o[i][1])) / (o[j][1] - o[i][1]) + o[i][0]) c = !c; return c; };
   for (const o of ov) {
-    const hits = scene.buildings.filter((b) => (o.match.name && b.n === o.match.name) || (o.match.at && Math.hypot(b.o[0][0] - toEN(o.match.at[0], o.match.at[1]).e, b.o[0][1] - toEN(o.match.at[0], o.match.at[1]).n) < 30));
-    for (const b of hits) { if (o.set.h) b.h = o.set.h; if (o.set.k) b.k = o.set.k; if (o.set.c) b.c = o.set.c; if (o.set.glass) b.g = true; if (o.set.notes) b.notes = o.set.notes; b.v = true; }
-    console.log(`override ${o.match.name ?? o.match.at}: ${hits.length} building(s)`);
+    let hits = scene.buildings.filter((b) => (o.match.name && b.n === o.match.name) || (o.match.at && Math.hypot(b.o[0][0] - toEN(o.match.at[0], o.match.at[1]).e, b.o[0][1] - toEN(o.match.at[0], o.match.at[1]).n) < 30) || (o.match.contains && inPoly(toEN(o.match.contains[0], o.match.contains[1]), b.o)));
+    if (!hits.length && o.match.contains) {   // point just outside every footprint (POI pins sit on the sidewalk): nearest building within 30 m
+      const pt = toEN(o.match.contains[0], o.match.contains[1]); let best = 30, pick: any;
+      for (const b of scene.buildings) for (const [e, n] of b.o) { const d = Math.hypot(e - pt.e, n - pt.n); if (d < best) { best = d; pick = b; } }
+      if (pick) hits = [pick];
+    }
+    for (const b of hits) { if (o.set.h) { b.h = o.set.h; b.hs = "override"; } if (o.set.k) b.k = o.set.k; if (o.set.c) b.c = o.set.c; if (o.set.glass) b.g = true; if (o.set.n) b.n = o.set.n; if (o.set.notes) b.notes = (b.notes ? b.notes + " " : "") + o.set.notes; b.v = true; }
+    console.log(`override ${o.match.name ?? o.match.contains ?? o.match.at}: ${hits.length} building(s)`);
   }
 }
+// Overture Maps (scripts/overture.sh): USGS-LiDAR heights replace OSM defaults/estimates, Microsoft-ML heights replace only
+// defaults, photo-verified overrides win; places become per-building tenants (hover) and storefront-sign facts (painter)
+const ovDir = `${DIRS.data}/overture`;
+const inPoly2 = (pt: number[], o: number[][]) => { let c = false; for (let i = 0, j = o.length - 1; i < o.length; j = i++) if (o[i][1] > pt[1] !== o[j][1] > pt[1] && pt[0] < ((o[j][0] - o[i][0]) * (pt[1] - o[i][1])) / (o[j][1] - o[i][1]) + o[i][0]) c = !c; return c; };
+const centroid = (o: number[][]) => o.reduce((a, q) => [a[0] + q[0] / o.length, a[1] + q[1] / o.length], [0, 0]);
+const nearestBuilding = (pt: number[], limit: number) => { let best = limit, pick: any; for (const b of scene.buildings) for (const [e, n] of b.o) { const d = Math.hypot(e - pt[0], n - pt[1]); if (d < best) { best = d; pick = b; } } return pick; };
+if (existsSync(`${ovDir}/buildings.geojson`)) {
+  const ob = JSON.parse(await Bun.file(`${ovDir}/buildings.geojson`).text()).features as any[];
+  let lidar = 0, ml = 0;
+  for (const f of ob) {
+    const h = f.properties.height; if (!h) continue;
+    const ring = f.geometry.type === "Polygon" ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0];
+    const c = centroid(ring.map(([lon, lat]: number[]) => { const q = toEN(lat, lon); return [q.e, q.n]; }));
+    const b = scene.buildings.find((b) => inPoly2(c, b.o)) ?? (() => { let best = 8, pick: any; for (const b of scene.buildings) { const d = Math.hypot(...(centroid(b.o).map((v, i) => v - c[i]) as [number, number])); if (d < best) { best = d; pick = b; } } return pick; })();
+    if (!b || b.hs === "override") continue;
+    const src = (f.properties.sources ?? []).map((x: any) => x.dataset).join(" ");
+    if (/Lidar/i.test(src)) { b.h = Math.max(2.5, h); b.hs = "lidar"; lidar++; }
+    else if (/Microsoft/i.test(src) && b.hs === "default") { b.h = Math.max(2.5, h); b.hs = "ml"; ml++; }
+  }
+  console.log(`overture heights: ${lidar} from USGS LiDAR, ${ml} from Microsoft ML`);
+}
+if (existsSync(`${ovDir}/places.geojson`)) {
+  const SIGN = new Set(["restaurant", "bar", "casual_eatery", "fast_food_restaurant", "coffee_shop", "cafe", "brewery", "food_and_beverage_store", "fashion_and_apparel_store", "hotel", "lodging", "bank_or_credit_union", "movie_theater", "convenience_store", "personal_care_and_beauty_store", "sporting_goods_store", "flowers_and_gifts_store", "electronics_store", "specialty_store", "hardware_home_and_garden_store", "toys_and_games_store", "gym", "fitness_studio", "smoothie_juice_bar", "non_alcoholic_beverage_venue", "nightlife_venue", "dance_club", "lounge", "music_venue", "theatre_venue", "pharmacy", "grocery_store", "shopping_mall", "market", "art_gallery", "museum", "bookstore", "ice_cream_shop", "dessert_shop", "pizza_restaurant", "tattoo_and_piercing"]);
+  const pl = (JSON.parse(await Bun.file(`${ovDir}/places.geojson`).text()).features as any[]).filter((f) => (f.properties.confidence ?? 0) >= 0.6 && SIGN.has(f.properties.basic_category) && f.properties.names?.primary && !/\b(llc|inc|l\.l\.c|llp|festival)\b/i.test(f.properties.names.primary));
+  const per = new Map<any, any[]>();
+  for (const f of pl) { const q = toEN(f.geometry.coordinates[1], f.geometry.coordinates[0]), pt = [q.e, q.n]; const b = scene.buildings.find((b) => inPoly2(pt, b.o)) ?? nearestBuilding(pt, 12); if (b) (per.get(b) ?? per.set(b, []).get(b)!).push(f); }
+  for (const [b, fs] of per) {
+    const seen = new Set<string>(); const names: string[] = [];
+    for (const f of fs.sort((x, y) => (y.properties.confidence ?? 0) - (x.properties.confidence ?? 0))) { const n = f.properties.names.primary.replace(/\s+-\s+Tempe$|\s+Tempe$/i, ""); const k = n.toLowerCase(); if (seen.has(k)) continue; seen.add(k); names.push(n); if (names.length >= 6) break; }
+    b.t = names; b.notes = (b.notes ? b.notes + " " : "") + `Storefront signs: ${names.map((n) => `'${n}'`).join(", ")}.`;
+  }
+  console.log(`overture places: ${pl.length} sign-worthy tenants on ${per.size} buildings`);
+}
+
 // street trees: OSM has almost no trees mapped downtown, so plant them along sidewalks (both sides, every ~11 m on
 // major streets, ~16 m on residential), skipping spots that already have a mapped tree or fall inside a building
 {
@@ -116,7 +156,7 @@ const segDist = (c: [number, number], a: [number, number], b: [number, number]) 
 const namedRoads = scene.roads.filter((r) => r.n && !r.foot);
 const nearestStreet = (c: [number, number]) => { let best = 80, name: string | undefined; for (const r of namedRoads) for (let i = 0; i < r.p.length - 1; i++) { const d = segDist(c, r.p[i], r.p[i + 1]); if (d < best) { best = d; name = r.n; } } return name; };
 const label = (b: any) => { if (b.n) return b.n; if (b.a) return b.a; const k = KIND[b.k] ?? (b.u ? "ASU building" : "Building"); const c: [number, number] = [b.o.reduce((s: number, q: number[]) => s + q[0], 0) / b.o.length, b.o.reduce((s: number, q: number[]) => s + q[1], 0) / b.o.length]; const st = nearestStreet(c); return st ? `${k} \u00b7 ${st}` : k; };
-await Bun.write(`${DIRS.pub}/buildings.json`, JSON.stringify(scene.buildings.filter((b) => b.o.length >= 4).map((b) => ({ o: b.o.map(([e, n]) => [+e.toFixed(1), +n.toFixed(1)]), h: +b.h.toFixed(1), m: b.m, n: b.n, l: label(b), k: b.k }))));
+await Bun.write(`${DIRS.pub}/buildings.json`, JSON.stringify(scene.buildings.filter((b) => b.o.length >= 4).map((b) => ({ o: b.o.map(([e, n]) => [+e.toFixed(1), +n.toFixed(1)]), h: +b.h.toFixed(1), m: b.m, n: b.n, l: label(b), k: b.k, t: b.t }))));
 
 // drivable graph for the traffic simulation, with the same widths/lanes the renderer draws
 {

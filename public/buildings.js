@@ -33,7 +33,7 @@ window.Buildings = (() => {
     el.addEventListener("mousemove", (ev) => {
       const r = el.getBoundingClientRect(), p = opts.viewer.viewport.viewerElementToImageCoordinates(new OpenSeadragon.Point(ev.clientX - r.left, ev.clientY - r.top));
       const b = hit(p.x, p.y); hover = b;
-      if (b) { tip.textContent = b.l || b.n; tip.style.display = "block"; tip.style.left = ev.clientX + 14 + "px"; tip.style.top = ev.clientY + 14 + "px"; } else tip.style.display = "none";
+      if (b) { tip.replaceChildren(); const t = document.createElement("div"); t.textContent = b.l || b.n; tip.append(t); if (b.t) { const s = document.createElement("div"); s.textContent = b.t.join(" \u00b7 "); s.style.cssText = "font-weight:400;opacity:.72;font-size:12px;max-width:280px;white-space:normal;margin-top:2px"; tip.append(s); } tip.style.display = "block"; tip.style.left = ev.clientX + 14 + "px"; tip.style.top = ev.clientY + 14 + "px"; } else tip.style.display = "none";
       el.style.cursor = b ? "pointer" : "";
     });
     el.addEventListener("mouseleave", () => { hover = null; tip.style.display = "none"; });
