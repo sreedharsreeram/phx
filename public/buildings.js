@@ -19,9 +19,11 @@ window.Buildings = (() => {
   }
   function draw(ctx, view) {
     if (!hover) return;
-    const poly = (pts) => { ctx.beginPath(); pts.forEach(([x, y], i) => { const [sx, sy] = view.toScreen(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); }); ctx.closePath(); };
-    ctx.save(); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(43,36,32,.9)"; ctx.fillStyle = "rgba(255,253,248,.18)";
-    poly(hover.roof); ctx.fill(); ctx.stroke(); if (hover.h > 3) { ctx.setLineDash([4, 4]); poly(hover.base); ctx.stroke(); }
+    const poly = (pts) => { ctx.beginPath(); pts.forEach(([x, y], i) => { const [sx, sy] = view.toScreen(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy); }); ctx.closePath(); ctx.fill(); };
+    // a warm saturation lift over the roof and every wall; overlay keeps the drawing's own shading underneath
+    ctx.save(); ctx.globalCompositeOperation = "overlay"; ctx.fillStyle = "rgba(255, 150, 60, 0.55)";
+    poly(hover.roof); for (let i = 0; i < hover.base.length - 1; i++) poly([hover.base[i], hover.base[i + 1], hover.roof[i + 1], hover.roof[i]]);
+    ctx.globalCompositeOperation = "soft-light"; ctx.fillStyle = "rgba(255, 200, 120, 0.5)"; poly(hover.roof);
     ctx.restore();
   }
   function start(opts) {

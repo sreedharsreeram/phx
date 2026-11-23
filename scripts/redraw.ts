@@ -8,7 +8,9 @@ import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedroc
 
 const geo = JSON.parse(await Bun.file(`${DIRS.data}/geo.json`).text());
 const PROVIDER = process.env.REDRAW_PROVIDER || "mock", WIN = 1024, PAD = 96, only = process.argv[2];
-const UP = Number(process.env.UPSCALE || 1);   // 2 = ask the model for a 2x window and build 2x chunks (map gets twice the pixels)
+const UP = Number(process.env.UPSCALE || 1);
+const WINDOWS = process.env.WINDOWS ? new Set(process.env.WINDOWS.split(";")) : null;   // "5,3;6,3" redraws just those 1024-px windows
+const QUALITY = process.env.OPENAI_IMAGE_QUALITY || "high";   // 2 = ask the model for a 2x window and build 2x chunks (map gets twice the pixels)
 const nx = geo.W / CHUNK, ny = geo.H / CHUNK;
 mkdirSync(`${DIRS.out}/redrawn`, { recursive: true }); mkdirSync(`${DIRS.out}/redraw-cache`, { recursive: true });
 
@@ -19,9 +21,16 @@ footprint, building height, roof shape, rooftop unit, tree and shadow exactly wh
 move or widen anything; no text, labels or people. Elaborate the surfaces realistically: window grids and balconies on facades,
 glass curtain walls with sky reflections, rooftop ducts and HVAC units, parapets, awnings and storefronts at street level, parked
 cars in parking stalls, striped asphalt, concrete sidewalks with curbs, desert landscaping, palm and palo verde trees with soft
-shadows. Warm Arizona afternoon light, long soft shadows. Output the same framing.` + (REF ? `
+shadows. Mill Avenue itself: red brick-paver sidewalks, mature street trees and palms in tree wells, ornamental black lampposts,
+restaurant patios with umbrellas, streetcar tracks set in the asphalt. Warm Arizona afternoon light, long soft shadows. Output the same framing.` + (REF ? `
 The second image is a finished window of the same map: match its palette, line weight, paper tone, tree style and shading
 EXACTLY so the two tile together seamlessly.` : "");
+
+// verified building notes whose roof centre falls inside a window, for the prompt
+const sceneB = (JSON.parse(await Bun.file(`${DIRS.data}/scene.json`).text()).buildings as any[]).filter((b) => b.notes);
+const dot3 = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const factsFor = (px: number, py: number, size: number) => sceneB.filter((b) => { const c = b.o.reduce((a: number[], p: number[]) => [a[0] + p[0] / b.o.length, a[1] + p[1] / b.o.length], [0, 0]); const w = [c[0], b.h, -c[1]];
+  const x = (dot3(geo.cam.right, w) - geo.x0) / geo.mpp, y = (geo.y1 - dot3(geo.cam.up, w)) / geo.mpp; return x >= px && x < px + size && y >= py && y < py + size; }).map((b) => `- ${b.n}: ${b.notes}`).join("\n");
 
 // one window of the full map, read across chunk boundaries
 async function window_(px: number, py: number, w: number, h: number) {
@@ -35,13 +44,13 @@ async function window_(px: number, py: number, w: number, h: number) {
   return sharp({ create: { width: w, height: h, channels: 3, background: geo.palette.ground } }).composite(parts).png().toBuffer();
 }
 
-const providers: Record<string, (png: Buffer, size: number) => Promise<Buffer>> = {
+const providers: Record<string, (png: Buffer, size: number, facts?: string) => Promise<Buffer>> = {
   // local stand-in so the plumbing (windows, feathering, tiling) can run without any key
   async mock(png, size) { return sharp(png).resize(size, size).modulate({ saturation: 0.92 }).blur(0.6).sharpen({ sigma: 1.2 }).linear(1.04, -6).png().toBuffer(); },
-  async openai(png, size) {
-    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+  async openai(png, size, facts = "") {
+    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2", prompt = STYLE + (facts ? `\n\nVerified facts about buildings in this view; draw them exactly so:\n${facts}` : "");
     for (const sz of [size, 1024]) {   // size is already the wanted output (window x UPSCALE); fall back to 1024 if refused
-      const fd = new FormData(); fd.append("model", model); fd.append("prompt", STYLE); fd.append("size", `${sz}x${sz}`); fd.append("quality", process.env.OPENAI_IMAGE_QUALITY || "high"); if (/gpt-image-1(\.|$)/.test(model)) fd.append("input_fidelity", "high");
+      const fd = new FormData(); fd.append("model", model); fd.append("prompt", prompt); fd.append("size", `${sz}x${sz}`); fd.append("quality", QUALITY); if (/gpt-image-1(\.|$)/.test(model)) fd.append("input_fidelity", "high");
       fd.append("image[]", new Blob([png], { type: "image/png" }), "window.png");
       if (REF) fd.append("image[]", new Blob([REF], { type: "image/png" }), "reference.png");
       const r = await fetch("https://api.openai.com/v1/images/edits", { method: "POST", headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: fd });
@@ -86,27 +95,36 @@ const redraw = providers[PROVIDER]; if (!redraw) throw new Error(`unknown provid
 // feather mask: full in the middle, fading over PAD px at each edge, so overlapping windows blend
 const mask = await (async () => { const n = (WIN + 2 * PAD) * UP, PADU = PAD * UP, raw = Buffer.alloc(n * n); for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) { const fx = Math.min(1, Math.min(x, n - 1 - x) / PADU), fy = Math.min(1, Math.min(y, n - 1 - y) / PADU); raw[y * n + x] = Math.round(255 * Math.min(fx, fy)); } return sharp(raw, { raw: { width: n, height: n, channels: 1 } }).png().toBuffer(); })();
 
-// accumulate per chunk: redrawn windows composited with the feather mask onto the plain render
+// accumulate per chunk: redrawn windows composited with the feather mask onto the plain render. Windows run POOL at a time.
+const POOL = Number(process.env.POOL || 4);
 const acc = new Map<string, sharp.OverlayOptions[]>();
 let n = 0, t0 = Date.now();
+type Job = { wx: number; wy: number; px: number; py: number; size: number; cache: string };
+const jobs: Job[] = [];
 for (let wy = 0; wy * WIN < geo.H; wy++) for (let wx = 0; wx * WIN < geo.W; wx++) {
   const cx = Math.floor((wx * WIN) / CHUNK), cy = Math.floor((wy * WIN) / CHUNK); if (only && only !== `${cx},${cy}`) continue;
-  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `${DIRS.out}/redraw-cache/${UP > 1 ? "x" + UP + "-" : ""}${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") : ""}_${wx}_${wy}.png`;
-  let out: Buffer;
-  if (existsSync(cache)) out = Buffer.from(await Bun.file(cache).arrayBuffer());
-  else {
-    const src = await window_(px, py, size, size);
-    // skip windows that are plain ground: nothing to redraw, and it keeps the bill down
-    const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) continue;
-    const outSize = size * UP, sent = PROVIDER === "bedrock" ? await sharp(src).resize(1024, 1024).png().toBuffer() : src;
-    const got = await redraw(sent, outSize);
-    out = await sharp(got).resize(outSize, outSize, { fit: "fill" }).png().toBuffer();
-    await Bun.write(cache, out); n++;
-    if (n % 10 === 0) console.log(`${n} windows redrawn, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
-  }
+  if (WINDOWS && !WINDOWS.has(`${wx},${wy}`)) continue;
+  const px = wx * WIN - PAD, py = wy * WIN - PAD, size = WIN + 2 * PAD, cache = `${DIRS.out}/redraw-cache/${UP > 1 ? "x" + UP + "-" : ""}${PROVIDER}${process.env.CONTROL_STRENGTH ? "-cs" + process.env.CONTROL_STRENGTH : ""}${PROVIDER === "openai" ? "-" + (process.env.OPENAI_IMAGE_MODEL || "gpt-image-2") + "-" + QUALITY : ""}_${wx}_${wy}.png`;
+  jobs.push({ wx, wy, px, py, size, cache });
+}
+async function runJob(j: Job): Promise<Buffer | null> {
+  if (existsSync(j.cache)) return Buffer.from(await Bun.file(j.cache).arrayBuffer());
+  const src = await window_(j.px, j.py, j.size, j.size);
+  const st = await sharp(src).stats(); if (st.channels.every((c) => c.stdev < 3)) return null;   // plain ground: skip
+  const outSize = j.size * UP, sent = PROVIDER === "bedrock" ? await sharp(src).resize(1024, 1024).png().toBuffer() : src;
+  const facts = factsFor(j.px, j.py, j.size); if (facts) console.log(`  facts for window ${j.wx},${j.wy}:\n${facts}`);
+  const got = await redraw(sent, outSize, facts);
+  const out = await sharp(got).resize(outSize, outSize, { fit: "fill" }).png().toBuffer();
+  await Bun.write(j.cache, out); n++; console.log(`  window ${j.wx},${j.wy} done (${n} new, ${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+  return out;
+}
+const results = new Map<Job, Buffer | null>();
+for (let i = 0; i < jobs.length; i += POOL) await Promise.all(jobs.slice(i, i + POOL).map(async (j) => { try { results.set(j, await runJob(j)); } catch (e) { console.log(`  window ${j.wx},${j.wy} FAILED: ${String(e).slice(0, 200)}`); results.set(j, null); } }));
+for (const j of jobs) {
+  const out = results.get(j); if (!out) continue;
   const masked = await sharp(out).ensureAlpha().joinChannel(mask, { raw: undefined }).removeAlpha().joinChannel(mask).png().toBuffer();
-  for (let cy2 = Math.max(0, Math.floor(py / CHUNK)); cy2 <= Math.min(ny - 1, Math.floor((py + size - 1) / CHUNK)); cy2++) for (let cx2 = Math.max(0, Math.floor(px / CHUNK)); cx2 <= Math.min(nx - 1, Math.floor((px + size - 1) / CHUNK)); cx2++) {
-    const k = `${cx2}_${cy2}`; (acc.get(k) ?? acc.set(k, []).get(k)!).push({ input: masked, left: (px - cx2 * CHUNK) * UP, top: (py - cy2 * CHUNK) * UP });
+  for (let cy2 = Math.max(0, Math.floor(j.py / CHUNK)); cy2 <= Math.min(ny - 1, Math.floor((j.py + j.size - 1) / CHUNK)); cy2++) for (let cx2 = Math.max(0, Math.floor(j.px / CHUNK)); cx2 <= Math.min(nx - 1, Math.floor((j.px + j.size - 1) / CHUNK)); cx2++) {
+    const k = `${cx2}_${cy2}`; (acc.get(k) ?? acc.set(k, []).get(k)!).push({ input: masked, left: (j.px - cx2 * CHUNK) * UP, top: (j.py - cy2 * CHUNK) * UP });
   }
 }
 const OUTCHUNK = CHUNK * UP, WSIZE = (WIN + 2 * PAD) * UP;

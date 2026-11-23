@@ -79,7 +79,7 @@ if (await Bun.file(ovPath).exists()) {
   const ov = JSON.parse(await Bun.file(ovPath).text()) as { match: { name?: string; at?: [number, number] }; set: Record<string, any> }[];
   for (const o of ov) {
     const hits = scene.buildings.filter((b) => (o.match.name && b.n === o.match.name) || (o.match.at && Math.hypot(b.o[0][0] - toEN(o.match.at[0], o.match.at[1]).e, b.o[0][1] - toEN(o.match.at[0], o.match.at[1]).n) < 30));
-    for (const b of hits) { if (o.set.h) b.h = o.set.h; if (o.set.k) b.k = o.set.k; if (o.set.c) b.c = o.set.c; if (o.set.glass) b.g = true; b.v = true; }
+    for (const b of hits) { if (o.set.h) b.h = o.set.h; if (o.set.k) b.k = o.set.k; if (o.set.c) b.c = o.set.c; if (o.set.glass) b.g = true; if (o.set.notes) b.notes = o.set.notes; b.v = true; }
     console.log(`override ${o.match.name ?? o.match.at}: ${hits.length} building(s)`);
   }
 }
