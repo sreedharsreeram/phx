@@ -15,3 +15,8 @@ out/*
 !out/tempe/
 out/tempe/*
 !out/tempe/probe-*.jpg
+!out/mill/
+out/mill/*
+!out/mill/buildings-index.jpg
+!out/mill/buildings.md
+!out/tempe/refs-contact.jpg
