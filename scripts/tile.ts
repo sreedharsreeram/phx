@@ -15,7 +15,10 @@ const chunkPath = (cx: number, cy: number) => { const r = `${DIRS.out}/${SOURCE}
 const grain = await sharp({ create: { width: 512, height: 512, channels: 3, noise: { type: "gaussian", mean: 236, sigma: 9 } } }).png().toBuffer();
 const paper = async (src: string | Buffer) => sharp(src).composite([{ input: grain, tile: true, blend: "multiply" }]).png().toBuffer();
 const geo = JSON.parse(await Bun.file(`${DIRS.data}/geo.json`).text());
-const UP = Number(process.env.UPSCALE || 1);   // redrawn chunks may be UPSCALE x larger than the render; the map then has UP x the pixels
+// redrawn chunks may be UPSCALE x larger than the render; the map then has UP x the pixels. A depth-only run must keep the
+// scale of the tiles already published, so it reads UP back from map.json instead of trusting the environment.
+const published = existsSync(`${DIRS.pub}/map.json`) ? JSON.parse(await Bun.file(`${DIRS.pub}/map.json`).text()) : null;
+const UP = process.env.DEPTH_ONLY && published ? published.W / geo.W : Number(process.env.UPSCALE || 1);
 const W = geo.W * UP, H = geo.H * UP, OUTCHUNK = CHUNK * UP, nx = geo.W / CHUNK, ny = geo.H / CHUNK, PER = OUTCHUNK / TILE;
 const maxLevel = Math.ceil(Math.log2(Math.max(W, H)));
 const sizeAt = (L: number) => { const f = 2 ** (maxLevel - L); return { w: Math.ceil(W / f), h: Math.ceil(H / f) }; };
