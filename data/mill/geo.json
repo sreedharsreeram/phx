@@ -1,0 +1,76 @@
+{
+ "center": {
+  "lat": 33.4258,
+  "lon": -111.94185
+ },
+ "mPerDegLat": 111319.49079327357,
+ "mPerDegLon": 92907.23587709357,
+ "pitch": 45,
+ "mpp": 0.1,
+ "x0": -311.2392401880332,
+ "y1": 398.77886012738645,
+ "W": 8192,
+ "H": 8192,
+ "extent": {
+  "e0": -311.2392401880332,
+  "e1": 311.2392401880332,
+  "n0": -333.9584723798334,
+  "n1": 333.9584723798334
+ },
+ "depthGrid": {
+  "cell": 4,
+  "w": 2048,
+  "h": 2048
+ },
+ "palette": {
+  "ground": "#eee5d6",
+  "road": "#c9c3b9",
+  "roadService": "#d6d0c6",
+  "roadCasing": "#a9a093",
+  "sidewalk": "#f4efe5",
+  "path": "#e4dccd",
+  "bridgeShadow": "#cfc5b4",
+  "laneYellow": "#dcb64f",
+  "laneWhite": "#f6f3ec",
+  "platform": "#ddd6c9",
+  "pool": "#7fc4e0",
+  "dirt": "#e3d6bf",
+  "runway": "#d9d4ca",
+  "apron": "#e3ded4",
+  "parking": "#e6dfd3",
+  "green": "#b8cc95",
+  "stadium": "#a9c48a",
+  "water": "#8fb9d2",
+  "railBed": "#c9c0b1",
+  "lightRailBed": "#cfc5b4",
+  "rail": "#8b8378",
+  "railTie": "#b7ad9c",
+  "hvac": "#d9d5cd",
+  "shelter": "#8e8a84",
+  "palm": "#6f9a52",
+  "asu": [
+   "#b9764f",
+   "#c98a5e",
+   "#a8644a",
+   "#d4a27a"
+  ],
+  "buildings": [
+   "#e7d8c3",
+   "#dfd5c6",
+   "#e4cfbf",
+   "#d9d2cb",
+   "#e9dfd0",
+   "#d8cbbd",
+   "#e2d3c9"
+  ],
+  "tower": "#c9d3dc",
+  "edge": "#5a4e42",
+  "tree": "#7a9e62",
+  "trunk": "#8a6a4d",
+  "pole": "#4d4842",
+  "lamp": "#3a3632"
+ },
+ "map": "mill",
+ "title": "Mill Avenue",
+ "workArea": null
+}
