@@ -67,7 +67,7 @@ window.Transit = (() => {
     const { W, H, scale, toScreen } = view, showRail = ui.toggles.rail.checked, showBus = ui.toggles.bus.checked, showStops = ui.toggles.stops.checked;
     if (showStops && scale > 0.05) for (const st of data.stops) {
       if (!st.station) continue; const p = G.toPixel(st.lat, st.lon, 1.5), [sx, sy] = toScreen(p.x, p.y); if (sx < -20 || sy < -20 || sx > W + 20 || sy > H + 20) continue;
-      const r = Math.max(4, Math.min(8, 60 * scale)), sel = selectedStop === st.id;
+      const r = Math.max(4, Math.min(9, 8 * view.pxPerM)), sel = selectedStop === st.id;
       ctx.fillStyle = sel ? "#2b2420" : "#fffdf8"; ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       if (scale > 0.25) { ctx.font = "600 12px Inter, sans-serif"; ctx.fillStyle = "#2b2420"; ctx.strokeStyle = "rgba(255,253,248,.9)"; ctx.lineWidth = 3; ctx.strokeText(st.name, sx + r + 4, sy + 4); ctx.fillText(st.name, sx + r + 4, sy + 4); }
       view.hits.push({ kind: "stop", st, sx, sy, r: r + 4 });
@@ -78,14 +78,14 @@ window.Transit = (() => {
       const hid = G.hidden({ x: s.x, y: s.y, depth: s.depth }), col = colorOf(v.route), hl = selected === v.id || follow === v.id;
       ctx.save(); ctx.translate(sx, sy); ctx.globalAlpha = hid ? 0.35 : 1;
       if (v.rail) {
-        const L = Math.max(14, Math.min(90, 56 * scale)), Wd = Math.max(5, Math.min(14, 9 * scale));
+        const L = Math.max(14, 28 * view.pxPerM), Wd = Math.max(5, 2.7 * view.pxPerM);   // a 28 m light-rail car
         ctx.rotate(s.ang); ctx.fillStyle = "rgba(43,36,32,.25)"; roundRect(ctx, 1.5, 2.5, L, Wd, 3); ctx.fill();
         ctx.fillStyle = col; roundRect(ctx, 0, 0, L, Wd, 3); ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,.85)"; ctx.lineWidth = 1; ctx.stroke();
         ctx.strokeStyle = "rgba(0,0,0,.25)"; ctx.beginPath(); ctx.moveTo(0, -Wd / 2); ctx.lineTo(0, Wd / 2); ctx.stroke();
         if (hl) { ctx.strokeStyle = "#2b2420"; ctx.lineWidth = 2; roundRect(ctx, 0, 0, L + 6, Wd + 6, 5); ctx.stroke(); }
         view.hits.push({ kind: "vehicle", v, sx, sy, r: Math.max(10, L / 2) });
       } else {
-        const r = Math.max(4, Math.min(11, 7 * scale * 1.8));
+        const r = Math.max(4, 3.5 * view.pxPerM);   // a bus, seen as a disc
         ctx.fillStyle = "rgba(43,36,32,.22)"; ctx.beginPath(); ctx.arc(1, 2, r, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.2; ctx.stroke();
         if (r >= 8) { ctx.fillStyle = "#fff"; ctx.font = `600 ${Math.round(r)}px Inter, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(v.route ?? "", 0, 0.5); }

@@ -91,7 +91,7 @@
   const card = document.getElementById("vcard"), followBtn = document.getElementById("follow");
   const setFollow = (on) => followBtn.classList.toggle("on", on);
   const planesUI = { G, viewer, base, toggle: document.getElementById("t-planes"), status: document.getElementById("planes-status") };
-  Layers.start({ viewer, canvas: document.getElementById("layer"), onSelect: (h) => {
+  Layers.start({ viewer, canvas: document.getElementById("layer"), mpp: geo.mpp, onSelect: (h) => {
     Planes.deselect(); Transit.select(null);
     if (!h) { card.classList.remove("on"); return; }
     if (h.kind === "plane") { const show = () => { card.classList.add("on"); card.innerHTML = Planes.card(h); card.querySelector("[data-follow]").onclick = () => { Transit.unfollow(); setFollow(Planes.follow(h.p.id)); show(); }; }; show(); }

@@ -10,14 +10,14 @@ window.Layers = (() => {
       view.scale = (viewer.viewport.getZoom(true) * viewer.viewport.getContainerSize().x) / item.getContentSize().x;
       const tl = viewer.viewport.imageToViewerElementCoordinates(new OpenSeadragon.Point(0, 0));
       view.toScreen = (x, y) => [tl.x + x * view.scale, tl.y + y * view.scale];
-      view.now = now;
+      view.now = now; view.pxPerM = view.scale / (view.mpp || 0.5);   // screen pixels per metre of ground
       for (const l of layers) if (!l.enabled || l.enabled()) { ctx.save(); try { l.draw(ctx, view); } catch (e) { console.warn(l.name, e); } ctx.restore(); }
     }
     requestAnimationFrame(frame);
   }
   function hit(x, y) { let best = null; for (const h of view.hits) { const d = Math.hypot(h.sx - x, h.sy - y); if (d < h.r && (!best || d < best.d)) best = { ...h, d }; } return best; }
   function start(opts) {
-    ({ viewer, canvas, onSelect } = opts); ctx = canvas.getContext("2d"); resize();
+    ({ viewer, canvas, onSelect } = opts); view.mpp = opts.mpp; ctx = canvas.getContext("2d"); resize();
     viewer.addHandler("resize", resize); addEventListener("resize", resize);
     viewer.addHandler("canvas-click", (e) => { if (e.quick) onSelect(hit(e.position.x, e.position.y)); });
     requestAnimationFrame(frame);

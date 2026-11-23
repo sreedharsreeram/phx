@@ -65,8 +65,8 @@ window.Traffic = (() => {
   function draw(ctx, view) {
     const now = view.now; if (!lastSim) lastSim = now; const dt = Math.min(0.1, (now - lastSim) / 1000); lastSim = now;
     density += (targetDensity() - density) * 0.02; step(dt, now);
-    if (view.scale < 0.12) return;   // too far out to see a car
-    const L = (CAR_LEN / 0.5) * view.scale, Wd = (1.9 / 0.5) * view.scale;
+    const L = CAR_LEN * view.pxPerM, Wd = 1.9 * view.pxPerM;
+    if (L < 1.2) return;   // too far out to see a car
     for (const c of cars) {
       // lanes sit inside the drawn asphalt: one-way streets use the whole width, two-way streets the right half
       const e = c.e, A = nodes[e.a], laneW = e.oneway ? e.w / e.lanes : e.w / 2 / e.lanes, off = e.oneway ? -e.w / 2 + (c.lane + 0.5) * laneW : (c.lane + 0.5) * laneW;

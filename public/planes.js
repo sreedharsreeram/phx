@@ -38,7 +38,7 @@ window.Planes = (() => {
     for (const { p, s } of list) {
       const air = G.enToPixel(s.e, s.n, s.alt), gnd = G.enToPixel(s.e, s.n, 0);
       const [sx, sy] = view.toScreen(air.x, air.y); if (sx < -80 || sy < -80 || sx > view.W + 80 || sy > view.H + 80) continue;
-      const heli = p.cat === "A7", L = Math.max(10, (span(p) / 0.5) * view.scale);   // 0.5 = metres per map pixel
+      const heli = p.cat === "A7", L = Math.max(10, span(p) * view.pxPerM);
       const h = G.heading(p.track ?? 0), ang = Math.atan2(h[1], h[0]);
       const onGround = p.ground || s.alt < 15;
       if (onGround && G.hidden({ x: gnd.x, y: gnd.y, depth: gnd.depth }, 3)) ctx.globalAlpha = 0.3;
