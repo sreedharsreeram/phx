@@ -122,7 +122,7 @@ ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p
     try {
       const sh = toShape(b.o, b.i), base = b.m ?? 0, depth = Math.max(2.5, b.h - base), top = base + depth + 0.3;
       const g = new THREE.ExtrudeGeometry(sh, { depth, bevelEnabled: false }); g.rotateX(-Math.PI / 2); g.translate(0, base + 0.3, 0);
-      const glass = b.h > 40 || /glass/.test(b.c ?? ""), kind = /house|detached|residential|apartments|dormitory|bungalow|terrace/.test(b.k) ? "warm" : /office|commercial|retail|hotel|university|college|hospital|school|public|civic|government/.test(b.k) ? "cool" : "any";
+      const glass = b.g || b.h > 40 || /glass/.test(b.c ?? ""), kind = /house|detached|residential|apartments|dormitory|bungalow|terrace/.test(b.k) ? "warm" : /office|commercial|retail|hotel|university|college|hospital|school|public|civic|government/.test(b.k) ? "cool" : "any";
       const pool = b.u ? asuPal : kind === "warm" ? palette.slice(0, 4) : kind === "cool" ? palette.slice(3) : palette;
       const c = b.c && /^#?[0-9a-f]{6}$/i.test(b.c) ? col(b.c.startsWith("#") ? b.c : "#" + b.c) : glass ? tower : pool[Math.floor(hash(b.o[0][0] + "," + b.o[0][1]) * pool.length)];
       const n = g.attributes.position.count, cols = new Float32Array(n * 3), nrm = g.attributes.normal;

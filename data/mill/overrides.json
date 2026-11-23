@@ -1,0 +1,12 @@
+[
+  {
+    "match": { "name": "Brickyard Engineering" },
+    "set": { "h": 22, "levels": 5, "k": "university", "c": "#a9573d", "roof": "flat", "notes": "5-storey red brick with cream stone banding and arched top-floor windows; dark metal awnings on cable stays at street level; ASU signage; ground-floor retail on Mill. Photos 10, 21 in refs." },
+    "source": "Commons photos; OSM had 7 m retail"
+  },
+  {
+    "match": { "name": "West 6 Apartments" },
+    "set": { "h": 105, "levels": 30, "k": "apartments", "glass": true, "c": "#9fb8c4", "notes": "Two glass towers on one podium: Tower 2 105.2 m / 30 floors (OSM footprint), Tower 1 78.6 m / 22 floors NOT in OSM yet. Teal-tinted curtain wall with pale horizontal spandrels and balcony bands; parking podium with ground-floor retail. Heights from CTBUH Skyscraper Center." },
+    "source": "CTBUH; Commons photos 1,5,19"
+  }
+]

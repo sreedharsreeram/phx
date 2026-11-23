@@ -20,3 +20,4 @@ out/mill/*
 !out/mill/buildings-index.jpg
 !out/mill/buildings.md
 !out/tempe/refs-contact.jpg
+!out/mill/specs.md

@@ -73,6 +73,16 @@ for (const f of src.features) {
     : t.leisure === "swimming_pool" ? "pool" : t.landuse === "construction" || t.landuse === "brownfield" ? "dirt" : null;
   if (kind) for (const p of polys(g)) scene.areas.push({ o: p.outer, i: p.holes.length ? p.holes : undefined, k: kind });
 }
+// photo-verified overrides beat OSM guesses: data/<map>/overrides.json [{ match: { name }, set: { h, k, c, glass, ... } }]
+const ovPath = `${DIRS.data}/overrides.json`;
+if (await Bun.file(ovPath).exists()) {
+  const ov = JSON.parse(await Bun.file(ovPath).text()) as { match: { name?: string; at?: [number, number] }; set: Record<string, any> }[];
+  for (const o of ov) {
+    const hits = scene.buildings.filter((b) => (o.match.name && b.n === o.match.name) || (o.match.at && Math.hypot(b.o[0][0] - toEN(o.match.at[0], o.match.at[1]).e, b.o[0][1] - toEN(o.match.at[0], o.match.at[1]).n) < 30));
+    for (const b of hits) { if (o.set.h) b.h = o.set.h; if (o.set.k) b.k = o.set.k; if (o.set.c) b.c = o.set.c; if (o.set.glass) b.g = true; b.v = true; }
+    console.log(`override ${o.match.name ?? o.match.at}: ${hits.length} building(s)`);
+  }
+}
 await Bun.write(`${DIRS.data}/scene.json`, JSON.stringify(scene));
 console.log(Object.fromEntries(Object.entries(scene).map(([k, v]) => [k, v.length])), `${(JSON.stringify(scene).length / 1e6).toFixed(1)} MB`);
 
