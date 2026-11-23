@@ -15,3 +15,10 @@ Status key: ✅ confirmed from photos/sources · ❓ needs a Google check · ✍
 - ✅ Podium: multi-level parking with retail at the Mill/6th corner; pool deck on the podium roof
 - ❓ OSM has ONE footprint (4,737 m², 103 m). Need the Tower 1 footprint and the podium outline from Google aerial to split them
 - ❓ Podium height (likely 5–6 parking levels, ~18 m) ✍️ height set to 105 m for Tower 2
+
+## Chase (Mill Ave & 5th St, west side)
+- ❓ OSM: 14.6 m office. The low pass drew it as a ~12-storey glass tower, far taller than the base box. Needs a photo: likely a 3–4 storey bank/office. Fix = height fact in overrides so the prompt pins it.
+
+## Pass notes (low pass 2, swatch reference)
+- ✅ Reference leakage fixed: no copied towers; buildingless desert/park windows stay as the plain render
+- ❓ Seams: some windows come back slightly re-framed (zoomed/shifted), e.g. the Mission Palms window, so edges don't meet neighbours exactly. Candidate fix: register each output to its source window (edge correlation) and retry outliers before compositing.
