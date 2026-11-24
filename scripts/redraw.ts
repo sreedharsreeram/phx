@@ -21,7 +21,9 @@ footprint, building height, roof shape, rooftop unit, tree and shadow exactly wh
 move or widen anything; no text, labels or people. Elaborate the surfaces realistically: window grids and balconies on facades,
 glass curtain walls with sky reflections, rooftop ducts and HVAC units, parapets, awnings and storefronts at street level, parked
 cars in parking stalls, striped asphalt, concrete sidewalks with curbs, desert landscaping, palm and palo verde trees with soft
-shadows. Mill Avenue itself: red brick-paver sidewalks, mature street trees and palms in tree wells, ornamental black lampposts,
+shadows. Bare ground is never a flat empty field: vacant lots and desert show sandy gravel texture, creosote and brittlebush
+scrub, scattered rocks, faint footpaths and tyre tracks; hillsides show rocky outcrops and ledges; large flat roofs show
+gravel texture, seams, drains, vents and skylights. Mill Avenue itself: red brick-paver sidewalks, mature street trees and palms in tree wells, ornamental black lampposts,
 restaurant patios with umbrellas, streetcar tracks set in the asphalt. Warm Arizona afternoon light, long soft shadows. Output the same framing.` + (REF ? `
 The second image is a finished window of the same map and is a STYLE REFERENCE ONLY: match its palette, line weight,
 paper tone, tree style and shading exactly so the two tile together seamlessly, but draw ONLY the buildings present in the

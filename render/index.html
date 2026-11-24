@@ -54,7 +54,7 @@ if (TER) {   // heightfield over the terrain grid; ground colour turns to scrub 
   addMesh(g, new THREE.MeshLambertMaterial({ vertexColors: true }), { cast: true });
 }
 const by = (k) => scene.areas.filter((a) => a.k === k);
-flat(by("dirt"), pal.dirt, 0.01); flat(by("parking"), pal.parking, 0.02); flat(by("apron"), pal.apron, 0.03); flat(by("green"), pal.green, 0.05); flat(by("stadium"), pal.stadium, 0.06); flat(by("platform"), pal.platform, 0.3); flat(by("water"), pal.water, 0.08); flat(by("pool"), pal.pool, 0.09);
+flat(by("dirt"), pal.dirt, 0.01); flat(by("desert"), pal.desert || "#e6d9c0", 0.005); flat(by("parking"), pal.parking, 0.02); flat(by("apron"), pal.apron, 0.03); flat(by("green"), pal.green, 0.05); flat(by("stadium"), pal.stadium, 0.06); flat(by("platform"), pal.platform, 0.3); flat(by("water"), pal.water, 0.08); flat(by("pool"), pal.pool, 0.09);
 
 // ---- ribbons: quads per segment + joint discs, flat normals up. dash(on, off) makes broken lines.
 function ribbon(items, widthOf, colorOf, liftOf, dash) {
@@ -176,6 +176,13 @@ ribbon(scene.rails.flatMap((r) => [{ ...r, p: offsetLine(r.p, 0.72) }, { ...r, p
   inst(ctrunk, pal.trunk, canopies, (o, [e, n]) => { o.position.set(e, T(e, n), -n); o.scale.set(1, 1, 1); o.rotation.set(0, 0, 0); });
   inst(canopy, pal.tree, canopies, (o, [e, n]) => { const s = 0.7 + hash(e - n) * 0.7; o.position.set(e, T(e, n), -n); o.scale.set(s, s, s); o.rotation.set(0, hash(e) * 6, 0); });
   world.children.filter((c) => c.isInstancedMesh && c.material.color.equals(col(pal.palm))).forEach((m) => (m.material.side = THREE.DoubleSide));
+}
+// ---- desert scrub (sage-green bushes) and rocks on bare ground
+if (scene.scrub?.length) {
+  const bushes = scene.scrub.filter((s) => !s[3]), rocks = scene.scrub.filter((s) => s[3]);
+  const place = (geom, color, pts, sy) => { if (!pts.length) return; const m = new THREE.InstancedMesh(geom, lambert(color), pts.length); const o = new THREE.Object3D(); pts.forEach(([e, n, s], i) => { o.position.set(e, T(e, n), -n); o.scale.set(s, s * sy, s * (0.8 + hash(e) * 0.4)); o.rotation.set(0, hash(n) * 6, 0); o.updateMatrix(); m.setMatrixAt(i, o.matrix); }); m.castShadow = true; m.receiveShadow = true; world.add(m); };
+  const bush = new THREE.IcosahedronGeometry(1, 1); bush.translate(0, 0.45, 0); place(bush, pal.scrub || "#8f9b6e", bushes, 0.55);
+  const rock = new THREE.IcosahedronGeometry(1, 0); rock.translate(0, 0.35, 0); place(rock, pal.rock || "#b08a66", rocks, 0.6);
 }
 // ---- traffic signals and bus stops
 {

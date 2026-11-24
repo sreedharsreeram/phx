@@ -70,7 +70,8 @@ for (const f of src.features) {
   const kind = t.natural === "water" || /^(river|riverbank|canal|dock)$/.test(t.waterway ?? "") ? "water"
     : /^(park|garden|pitch|golf_course|dog_park|playground)$/.test(t.leisure ?? "") || /^(grass|recreation_ground|cemetery|forest|meadow|village_green)$/.test(t.landuse ?? "") ? "green"
     : t.leisure === "stadium" ? "stadium" : t.amenity === "parking" && t.parking !== "multi-storey" && t.parking !== "underground" ? "parking" : t.aeroway === "apron" ? "apron"
-    : t.leisure === "swimming_pool" ? "pool" : t.landuse === "construction" || t.landuse === "brownfield" ? "dirt" : null;
+    : t.leisure === "swimming_pool" ? "pool" : t.landuse === "construction" || t.landuse === "brownfield" || t.landuse === "greenfield" ? "dirt"
+    : /^(scrub|heath|sand|bare_rock|scree|grassland)$/.test(t.natural ?? "") || t.leisure === "nature_reserve" ? "desert" : null;
   if (kind) for (const p of polys(g)) scene.areas.push({ o: p.outer, i: p.holes.length ? p.holes : undefined, k: kind });
 }
 // photo-verified overrides beat OSM guesses: data/<map>/overrides.json [{ match: { name }, set: { h, k, c, glass, ... } }]
@@ -145,6 +146,43 @@ if (existsSync(`${ovDir}/places.geojson`)) {
   }
   for (const b of scene.buildings) delete b.bb;
   console.log(`street trees planted: ${planted}`);
+}
+// desert scrub and rocks: creosote-sized bushes on dirt/desert areas, on terrain slopes and in vacant lots (away from roads,
+// buildings and landscaped areas), boulders on steep ground. Bare ground otherwise paints as a blank beige field.
+{
+  const pip = (x: number, y: number, r: Pt[]) => { let c = false; for (let i = 0, j = r.length - 1; i < r.length; j = i++) { const [xi, yi] = r[i], [xj, yj] = r[j]; if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  const hash = (a: number, b: number) => { let h = 2166136261 ^ Math.round(a * 7 + b * 13); h = Math.imul(h ^ (h >>> 15), 2246822519); h = Math.imul(h ^ (h >>> 13), 3266489917); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+  const terPath = `${DIRS.data}/terrain.json`, TER = existsSync(terPath) ? JSON.parse(await Bun.file(terPath).text()) : null;
+  const T = TER ? (e: number, n: number) => { const fx = (e - TER.e0) / TER.cellE - 0.5, fy = (TER.n1 - n) / TER.cellN - 0.5, x0 = Math.max(0, Math.min(TER.w - 2, Math.floor(fx))), y0 = Math.max(0, Math.min(TER.h - 2, Math.floor(fy))), tx = Math.min(1, Math.max(0, fx - x0)), ty = Math.min(1, Math.max(0, fy - y0)), z = TER.z, i = y0 * TER.w + x0; return ((z[i] * (1 - tx) + z[i + 1] * tx) * (1 - ty) + (z[i + TER.w] * (1 - tx) + z[i + TER.w + 1] * tx) * ty) / 10; } : () => 0;
+  const C = 50, cellKey = (x: number, y: number) => `${Math.floor(x / C)},${Math.floor(y / C)}`;
+  type Box = { bb: number[]; o: Pt[]; k?: string; w?: number };
+  const boxes = (items: Box[]) => { const g = new Map<string, Box[]>(); for (const it of items) { const xs = it.o.map((p) => p[0]), ys = it.o.map((p) => p[1]); it.bb = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; for (let x = Math.floor((it.bb[0] - 8) / C); x <= Math.floor((it.bb[2] + 8) / C); x++) for (let y = Math.floor((it.bb[1] - 8) / C); y <= Math.floor((it.bb[3] + 8) / C); y++) (g.get(`${x},${y}`) ?? g.set(`${x},${y}`, []).get(`${x},${y}`)!).push(it); } return g; };
+  const bGrid = boxes(scene.buildings.map((b: any) => ({ bb: [], o: b.o })));
+  const keep = new Set(["parking", "green", "water", "platform", "pool", "stadium", "apron"]);
+  const aGrid = boxes(scene.areas.map((a: any) => ({ bb: [], o: a.o, k: a.k })));
+  const rGrid = new Map<string, { p: Pt[]; w: number }[]>(); for (const r of scene.roads) { const corridor = r.w / 2 + (r.sw ?? 0) + (r.foot ? 2 : 10); for (let i = 0; i + 1 < r.p.length; i++) { const [ax, ay] = r.p[i], [bx, by] = r.p[i + 1]; for (let x = Math.floor((Math.min(ax, bx) - corridor) / C); x <= Math.floor((Math.max(ax, bx) + corridor) / C); x++) for (let y = Math.floor((Math.min(ay, by) - corridor) / C); y <= Math.floor((Math.max(ay, by) + corridor) / C); y++) (rGrid.get(`${x},${y}`) ?? rGrid.set(`${x},${y}`, []).get(`${x},${y}`)!).push({ p: [r.p[i], r.p[i + 1]], w: corridor }); } }
+  for (const r of scene.rails) for (let i = 0; i + 1 < r.p.length; i++) { const [ax, ay] = r.p[i], [bx, by] = r.p[i + 1]; for (let x = Math.floor((Math.min(ax, bx) - 8) / C); x <= Math.floor((Math.max(ax, bx) + 8) / C); x++) for (let y = Math.floor((Math.min(ay, by) - 8) / C); y <= Math.floor((Math.max(ay, by) + 8) / C); y++) (rGrid.get(`${x},${y}`) ?? rGrid.set(`${x},${y}`, []).get(`${x},${y}`)!).push({ p: [r.p[i], r.p[i + 1]], w: 8 }); }
+  const segD = (x: number, y: number, [a, b]: Pt[]) => { const dx = b[0] - a[0], dy = b[1] - a[1], t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1))); return Math.hypot(x - a[0] - t * dx, y - a[1] - t * dy); };
+  const nearBuilding = (x: number, y: number, d: number) => (bGrid.get(cellKey(x, y)) ?? []).some((b) => x > b.bb[0] - d && x < b.bb[2] + d && y > b.bb[1] - d && y < b.bb[3] + d && (pip(x, y, b.o) || b.o.some((q) => Math.hypot(q[0] - x, q[1] - y) < d) || b.o.some((q, i) => i + 1 < b.o.length && segD(x, y, [q, b.o[i + 1]]) < d)));
+  const areaAt = (x: number, y: number) => { let k: string | undefined; for (const a of aGrid.get(cellKey(x, y)) ?? []) if (x >= a.bb[0] && x <= a.bb[2] && y >= a.bb[1] && y <= a.bb[3] && pip(x, y, a.o)) { if (keep.has(a.k!)) return a.k; k = a.k; } return k; };
+  const roadDist = (x: number, y: number) => { let best = 99; for (const r of rGrid.get(cellKey(x, y)) ?? []) best = Math.min(best, segD(x, y, r.p) - r.w); return best; };
+  const tgrid = new Map<string, Pt[]>(); for (const t of scene.trees) { const k = cellKey(t[0], t[1]); (tgrid.get(k) ?? tgrid.set(k, []).get(k)!).push(t); }
+  const nearTree = (x: number, y: number) => { for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (const q of tgrid.get(`${Math.floor(x / C) + i},${Math.floor(y / C) + j}`) ?? []) if (Math.hypot(q[0] - x, q[1] - y) < 4) return true; return false; };
+  const geo = JSON.parse(await Bun.file(`${DIRS.data}/geo.json`).text());
+  const { e0, e1, n0, n1 } = geo.extent, M = 200, scrub: number[][] = [];
+  for (let y = n0 - M; y < n1 + M; y += 5) for (let x = e0 - M; x < e1 + M; x += 5) {
+    const jx = x + (hash(x, y) - 0.5) * 4, jy = y + (hash(y, x) - 0.5) * 4, r = hash(x + 1, y + 2);
+    const a = areaAt(jx, jy); if (a && keep.has(a)) continue;
+    if (nearBuilding(jx, jy, 5) || nearTree(jx, jy)) continue;
+    const rd = roadDist(jx, jy); if (rd < 0) continue;
+    const t = T(jx, jy), slope = Math.hypot(T(jx + 3, jy) - T(jx - 3, jy), T(jx, jy + 3) - T(jx, jy - 3)) / 6;
+    const wild = a === "dirt" || a === "desert" || t > 1.5 || slope > 0.08;
+    const p = wild ? 0.42 : rd > 12 ? 0.09 : 0;
+    if (r >= p) continue;
+    const rock = slope > 0.22 && hash(y + 3, x + 5) < 0.3;
+    scrub.push([+jx.toFixed(1), +jy.toFixed(1), +(rock ? 0.6 + hash(x, y + 9) * 1.6 : 0.8 + hash(x + 4, y) * 1.4).toFixed(2), rock ? 1 : 0]);
+  }
+  scene.scrub = scrub; console.log(`scrub: ${scrub.filter((s) => !s[3]).length} bushes, ${scrub.filter((s) => s[3]).length} rocks`);
 }
 await Bun.write(`${DIRS.data}/scene.json`, JSON.stringify(scene));
 console.log(Object.fromEntries(Object.entries(scene).map(([k, v]) => [k, v.length])), `${(JSON.stringify(scene).length / 1e6).toFixed(1)} MB`);

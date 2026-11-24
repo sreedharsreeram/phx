@@ -92,7 +92,10 @@
   "tree": "#7a9e62",
   "trunk": "#8a6a4d",
   "pole": "#4d4842",
-  "lamp": "#3a3632"
+  "lamp": "#3a3632",
+  "scrub": "#8f9b6e",
+  "rock": "#b08a66",
+  "desert": "#e6d9c0"
  },
  "map": "mill",
  "title": "Mill Avenue",

@@ -26,7 +26,7 @@ const geo = {
     railBed: "#c9c0b1", lightRailBed: "#cfc5b4", rail: "#8b8378", railTie: "#b7ad9c", hvac: "#d9d5cd", shelter: "#8e8a84", palm: "#6f9a52",
     asu: ["#b9764f", "#c98a5e", "#a8644a", "#d4a27a"],
     buildings: ["#e7d8c3", "#dfd5c6", "#e4cfbf", "#d9d2cb", "#e9dfd0", "#d8cbbd", "#e2d3c9"], tower: "#c9d3dc", edge: "#5a4e42",
-    tree: "#7a9e62", trunk: "#8a6a4d", pole: "#4d4842", lamp: "#3a3632",
+    tree: "#7a9e62", trunk: "#8a6a4d", pole: "#4d4842", lamp: "#3a3632", scrub: "#8f9b6e", rock: "#b08a66", desert: "#e6d9c0",
   },
 };
 await Bun.write(`${DIRS.data}/geo.json`, JSON.stringify({ ...geo, map: MAP, title: MAPS[MAP].title, workArea: (MAPS[MAP] as any).workArea ?? null }, null, 1));
